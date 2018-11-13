@@ -1,7 +1,11 @@
 # Ignore data files
 *.csv
 *.png
+*.jpg
 *.json
+
+# TensorFlow Hub files
+image-retraining/tf_files/bottlenecks/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -94,6 +98,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+capstone/
 
 # Spyder project settings
 .spyderproject
