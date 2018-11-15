@@ -8,6 +8,9 @@
 # TensorFlow Hub files
 image-retraining/tf_files/bottlenecks/
 
+# VS Code
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
