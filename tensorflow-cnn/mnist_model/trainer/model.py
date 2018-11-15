@@ -12,15 +12,11 @@ import numpy as np
 import tensorflow as tf
 import os
 
-# TODO: Replace with command line arg.
-cwd = os.getcwd()
-
-# # eager execution
-# import tensorflow.contrib.eager as tfe
-# tf.enable_eager_execution()
-
-# set logging
 tf.logging.set_verbosity(tf.logging.INFO)
+
+HEIGHT=28
+WIDTH=28
+NCLASSES=10
 
 # model function
 # TODO: Enable hyperparameter tuning; see params dict in https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator
@@ -129,10 +125,6 @@ def train_and_evaluate(output_dir, hparams):
     eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
 
     # Train Input Function
-    # NOTE: This appears to be a function specifically for creating a training
-    #       input function from a Numpy array. Again, we won't have this and
-    #       probably wouldn't want to use it anyway since this isn't going to
-    #       perform well with large datasets because it reads into memory.
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
         x={
             "x": train_data
@@ -141,15 +133,21 @@ def train_and_evaluate(output_dir, hparams):
         batch_size=100,
         num_epochs=None,
         shuffle=True,
+        queue_capacity=5000
     )
 
     # Eval Input Function
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": eval_data}, y=eval_labels, num_epochs=1, shuffle=False
+        x={"x": eval_data}, 
+        y=eval_labels, 
+        batch_size=hparams['train_batch_size'],
+        num_epochs=1, 
+        shuffle=False,
+        queue_capacity=5000
     )
 
     # create the estimator
-    mnist_classifier = tf.estimator.Estimator(
+    estimator = tf.estimator.Estimator(
         model_fn=cnn_model_fn,
         config=tf.estimator.RunConfig(
             save_checkpoints_secs=EVAL_INTERVAL # checkpoint save interval
@@ -158,12 +156,21 @@ def train_and_evaluate(output_dir, hparams):
     )
 
     # Train Spec
-    train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=2500)
+    train_spec = tf.estimator.TrainSpec(
+        input_fn=train_input_fn, 
+        max_steps=hparams['train_steps']
+        )
 
     # Eval Spec
     eval_spec = tf.estimator.EvalSpec(
-        input_fn=eval_input_fn, steps=None, throttle_secs=EVAL_INTERVAL, name="eval"
+        input_fn=eval_input_fn,
+        steps=None,
+        throttle_secs=EVAL_INTERVAL, name="eval"
     )
 
     # Train and evaluate loop
-    tf.estimator.train_and_evaluate(mnist_classifier, train_spec, eval_spec)
+    tf.estimator.train_and_evaluate(
+        estimator,
+        train_spec, 
+        eval_spec
+        )

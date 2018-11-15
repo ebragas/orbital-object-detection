@@ -110,7 +110,7 @@ if __name__ == "__main__":
     # )
 
     # Calculate train_steps if not provided
-    if hparams['train_steps'] < 0:
+    if hparams['train_steps'] < 1:
         # 10,000 steps at batch size of 512
         hparams['train_steps'] = (10000 * 512) // hparams['train_batch_size']
         print('Training for {} steps'.format(hparams['train_steps']))
