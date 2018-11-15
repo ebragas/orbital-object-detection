@@ -20,15 +20,14 @@ NCLASSES=10
 
 # model function
 # TODO: Enable hyperparameter tuning; see params dict in https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator
-def cnn_model_fn(features, mode, params):
+def cnn_model_fn(img, mode, params):
     """CNN model function
 
     Accepts: feature data, labels, and mode specified by tf.estimator.ModeKeys {TRAIN, EVAL, PREDICT}
     """
 
     # input layer
-    # NOTE: reshapes image tensors?
-    input_layer = tf.reshape(features["image"], [-1, 28, 28, 1])  # expected image size
+    input_layer = tf.reshape(img, [-1, HEIGHT, WIDTH, 1])  # expected image size
 
     # conv. layer #1
     conv1 = tf.layers.conv2d(
@@ -79,9 +78,6 @@ def cnn_model_fn(features, mode, params):
 
     return logits, NCLASSES  # NOTE: why do we need to return this here?
 
-    # return tf.estimator.EstimatorSpec(
-    #     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops
-    # )
 
 def image_classifier(features, labels, mode, params):
     '''Generates estimator spec using the provided hyper-parameters in params.
@@ -178,7 +174,8 @@ def train_and_evaluate(output_dir, hparams):
 
     # create the estimator
     estimator = tf.estimator.Estimator(
-        model_fn=cnn_model_fn,
+        model_fn=image_classifier,
+        params=hparams,
         config=tf.estimator.RunConfig(
             save_checkpoints_secs=EVAL_INTERVAL # checkpoint save interval
         ),
