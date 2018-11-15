@@ -20,7 +20,7 @@ NCLASSES=10
 
 # model function
 # TODO: Enable hyperparameter tuning; see params dict in https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator
-def cnn_model_fn(features, labels, mode, params):
+def cnn_model_fn(features, mode, params):
     """CNN model function
 
     Accepts: feature data, labels, and mode specified by tf.estimator.ModeKeys {TRAIN, EVAL, PREDICT}
@@ -28,7 +28,7 @@ def cnn_model_fn(features, labels, mode, params):
 
     # input layer
     # NOTE: reshapes image tensors?
-    input_layer = tf.reshape(features["x"], [-1, 28, 28, 1])  # expected image size
+    input_layer = tf.reshape(features["image"], [-1, 28, 28, 1])  # expected image size
 
     # conv. layer #1
     conv1 = tf.layers.conv2d(
@@ -60,48 +60,78 @@ def cnn_model_fn(features, labels, mode, params):
         inputs=conv2, pool_size=[2, 2], strides=2, name="pool2"
     )
 
+    # flatten output
+    pool2_flat = tf.reshape(
+        pool2, [-1, pool2.shape[1] * pool2.shape[2] * pool2.shape[3]]) # pool2 height * width * channels
+
     # dense layer
-    pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 64])  # pool2 height * width * channels
     dense = tf.layers.dense(
         inputs=pool2_flat, units=1024, activation=tf.nn.relu, name="dense"
     )
+
+    # dropout layer
     dropout = tf.layers.dropout(
         inputs=dense, rate=0.4, training=(mode == tf.estimator.ModeKeys.TRAIN)
     )  # TODO: parameterize dropout rate
 
     # logits layer
-    logits = tf.layers.dense(inputs=dropout, units=10, name="logits")
+    logits = tf.layers.dense(inputs=dropout, units=NCLASSES, name="logits")
 
-    # find class prediction and class probabilities
+    return logits, NCLASSES  # NOTE: why do we need to return this here?
+
+    # return tf.estimator.EstimatorSpec(
+    #     mode=mode, loss=loss, eval_metric_ops=eval_metric_ops
+    # )
+
+def image_classifier(features, labels, mode, params):
+    '''Generates estimator spec using the provided hyper-parameters in params.
+    '''
+    model_fn = cnn_model_fn
+    logits, nclasses = model_fn(features['image'], mode, params)
+
+    # Find class prediction and class probabilities
     predictions = {
         # generate predictions for PREDICT and EVAL model
-        "classes": tf.argmax(input=logits, axis=1),
+        "classes": tf.argmax(input=logits, axis=1),  # NOTE: do we need tf.cast(..., tf.unit8)?
         # add `softmax_tensor` to graph; used for PREDICT and logging_hook
         "probabilities": tf.nn.softmax(logits, name="softmax_tensor"),
     }
 
-    # calculate loss for TRAIN and EVAL modes
-    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-    # NOTE: interesting it takes the logits
-
-    # configure the Training Op for TRAIN mode
+    # Configure the Training Op for TRAIN mode
     # NOTE: what is an Op?
-    if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-        train_op = optimizer.minimize(
-            loss=loss,
-            global_step=tf.train.get_global_step(),  # NOTE: what's a global_step?
-        )
-        return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
+    if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL:
+        # TRAIN
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)  # NOTE: interesting it takes the logits
+        
+        # EVAL
+        eval_metric_ops = {
+            "accuracy": tf.metrics.accuracy(
+                labels=labels, predictions=predictions["classes"]
+            )
+        }
 
-    # add eval metrics for EVAL mode
-    eval_metric_ops = {
-        "accuracy": tf.metrics.accuracy(
-            labels=labels, predictions=predictions["classes"]
-        )
-    }
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
+            train_op = optimizer.minimize(
+                loss=loss,
+                global_step=tf.train.get_global_step(),  # NOTE: what's a global_step?
+            )
+        else:
+            train_op = None
+    
+    else:   # NOTE: PREDICT?
+        loss = None
+        train_op = None
+        eval_metric_ops = None
+
     return tf.estimator.EstimatorSpec(
-        mode=mode, loss=loss, eval_metric_ops=eval_metric_ops
+        mode=mode,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metric_ops=eval_metric_ops,
+        export_outputs={
+            'classes': tf.estimator.export.PredictOutput(predictions)}
     )
 
 
@@ -127,7 +157,7 @@ def train_and_evaluate(output_dir, hparams):
     # Train Input Function
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
         x={
-            "x": train_data
+            "image": train_data
         },  # defined as a dict with key of feature name and value of tensor
         y=train_labels,
         batch_size=100,
@@ -138,7 +168,7 @@ def train_and_evaluate(output_dir, hparams):
 
     # Eval Input Function
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"x": eval_data}, 
+        x={"image": eval_data}, 
         y=eval_labels, 
         batch_size=hparams['train_batch_size'],
         num_epochs=1, 
