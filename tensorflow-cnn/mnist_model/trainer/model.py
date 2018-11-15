@@ -118,17 +118,15 @@ def train_and_evaluate(output_dir, hparams):
 
     # load training and eval data
     # TODO: Replace with tf.keras.datasets.mnist.load('mnist')
-    # mnist = tf.contrib.learn.datasets.load_dataset("mnist")
+    mnist = tf.contrib.learn.datasets.load_dataset("mnist")
 
-    # train_data = mnist.train.images  # returns np.array
-    # train_labels = np.asarray(
-    #     mnist.train.labels, dtype=np.int32
-    # )  # converts array dtype
+    train_data = mnist.train.images  # returns np.array
+    train_labels = np.asarray(
+        mnist.train.labels, dtype=np.int32
+    )  # converts array dtype
 
-    # eval_data = mnist.test.images  # returns np.array
-    # eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
-
-    (train_data, train_labels), (eval_data, eval_labels) = tf.keras.datasets.mnist.load_data()
+    eval_data = mnist.test.images  # returns np.array
+    eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
 
     # Train Input Function
     # NOTE: This appears to be a function specifically for creating a training
