@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         help="Type of model. Supported types are {}".format(model_names),
-        default="linear",
+        default="cnn",
     )
     parser.add_argument(
         "--job-dir",
@@ -53,30 +53,30 @@ if __name__ == "__main__":
     )
 
     # Optional hyperparameters used by cnn
-    # parser.add_argument(
-    #     "--ksize1", 
-    #     help="kernel size of first layer for CNN", 
-    #     type=int, 
-    #     default=5
-    # )
-    # parser.add_argument(
-    #     "--ksize2", 
-    #     help="kernel size of second layer for CNN", 
-    #     type=int, 
-    #     default=5
-    # )
-    # parser.add_argument(
-    #     "--nfil1", 
-    #     help="number of filters in first layer for CNN", 
-    #     type=int, 
-    #     default=10
-    # )
-    # parser.add_argument(
-    #     "--nfil2",
-    #     help="number of filters in second layer for CNN",
-    #     type=int,
-    #     default=20,
-    # )
+    parser.add_argument(
+        "--ksize1", 
+        help="kernel size of first layer for CNN", 
+        type=int, 
+        default=5
+    )
+    parser.add_argument(
+        "--ksize2", 
+        help="kernel size of second layer for CNN", 
+        type=int, 
+        default=5
+    )
+    parser.add_argument(
+        "--nfil1", 
+        help="number of filters in first layer for CNN", 
+        type=int, 
+        default=32
+    )
+    parser.add_argument(
+        "--nfil2",
+        help="number of filters in second layer for CNN",
+        type=int,
+        default=64,
+    )
     parser.add_argument(
         "--drop_prob", help="dropout probability for CNN", 
         type=float, 
@@ -102,12 +102,12 @@ if __name__ == "__main__":
     # Append trial_id to path so hyper-parameter tuning doesn't overwrite each other
     # NOTE: Not 100% clear on how this works yet
     # TODO: Reimplement this later
-    # output_dir = os.path.join(
-    #     output_dir,
-    #     json.loads(
-    #         os.environ['TF_CONFIG', '{}']
-    #     ).get('task', {}).get('trial', '')
-    # )
+    output_dir = os.path.join(
+        output_dir,
+        json.loads(
+            os.environ.get('TF_CONFIG', '{}')
+        ).get('task', {}).get('trial', '')
+    )
 
     # Calculate train_steps if not provided
     if hparams['train_steps'] < 1:
