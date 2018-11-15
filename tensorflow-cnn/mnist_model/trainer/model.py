@@ -70,8 +70,8 @@ def cnn_model_fn(img, mode, params):
 
     # dropout layer
     dropout = tf.layers.dropout(
-        inputs=dense, rate=0.4, training=(mode == tf.estimator.ModeKeys.TRAIN)
-    )  # TODO: parameterize dropout rate
+        inputs=dense, rate=params['drop_prob'], training=(mode == tf.estimator.ModeKeys.TRAIN)
+    )
 
     # logits layer
     logits = tf.layers.dense(inputs=dropout, units=NCLASSES, name="logits")
@@ -82,7 +82,11 @@ def cnn_model_fn(img, mode, params):
 def image_classifier(features, labels, mode, params):
     '''Generates estimator spec using the provided hyper-parameters in params.
     '''
-    model_fn = cnn_model_fn
+    # Select from available models
+    model_functions = {
+        'cnn': cnn_model_fn
+    }
+    model_fn = model_functions[params['model']]
     logits, nclasses = model_fn(features['image'], mode, params)
 
     # Find class prediction and class probabilities
@@ -115,7 +119,8 @@ def image_classifier(features, labels, mode, params):
         else:
             train_op = None
     
-    else:   # NOTE: PREDICT?
+    # PREDICT
+    else:
         loss = None
         train_op = None
         eval_metric_ops = None
@@ -156,7 +161,7 @@ def train_and_evaluate(output_dir, hparams):
             "image": train_data
         },  # defined as a dict with key of feature name and value of tensor
         y=train_labels,
-        batch_size=100,
+        batch_size=hparams['train_batch_size'],
         num_epochs=None,
         shuffle=True,
         queue_capacity=5000
