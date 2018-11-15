@@ -117,3 +117,4 @@ capstone/
 
 # mypy
 .mypy_cache/
+tensorflow-cnn/mnist_model/checkpoints/
