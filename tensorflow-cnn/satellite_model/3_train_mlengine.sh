@@ -7,11 +7,11 @@ gcloud ml-engine jobs submit training $JOB_NAME \
     --job-dir=$OUTPUT_PATH \
     --runtime-version=1.8 \
     --module-name=trainer.task \
-    --package-path=${PWD}/tensorflow-cnn/mnist_model/trainer \
+    --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
     --scale-tier=STANDARD_1 \
     -- \
     --output_dir=${OUTPUT_PATH}/output \
-    --train_steps=20000
+    --train_steps=2000
 
 echo 'tensorboard --logdir' ${OUTPUT_PATH}
 
