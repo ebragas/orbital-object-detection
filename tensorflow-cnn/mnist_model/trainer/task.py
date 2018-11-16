@@ -26,7 +26,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--train_steps",
-        help="Steps to run the training job for. A step is one batch-size""",
+        help="Steps to run the training job for. A step is one batch-size" "",
         type=int,
         default=0,
     )
@@ -54,22 +54,13 @@ if __name__ == "__main__":
 
     # Optional hyperparameters used by cnn
     parser.add_argument(
-        "--ksize1", 
-        help="kernel size of first layer for CNN", 
-        type=int, 
-        default=5
+        "--ksize1", help="kernel size of first layer for CNN", type=int, default=5
     )
     parser.add_argument(
-        "--ksize2", 
-        help="kernel size of second layer for CNN", 
-        type=int, 
-        default=5
+        "--ksize2", help="kernel size of second layer for CNN", type=int, default=5
     )
     parser.add_argument(
-        "--nfil1", 
-        help="number of filters in first layer for CNN", 
-        type=int, 
-        default=32
+        "--nfil1", help="number of filters in first layer for CNN", type=int, default=32
     )
     parser.add_argument(
         "--nfil2",
@@ -78,9 +69,7 @@ if __name__ == "__main__":
         default=64,
     )
     parser.add_argument(
-        "--drop_prob", help="dropout probability for CNN", 
-        type=float, 
-        default=0.25
+        "--drop_prob", help="dropout probability for CNN", type=float, default=0.25
     )
     # parser.add_argument(
     #     "--batch_norm",
@@ -94,26 +83,24 @@ if __name__ == "__main__":
     hparams = args.__dict__
 
     # Unused args provided by ML Engine
-    hparams.pop('job_dir', None)
-    hparams.pop('job-dir', None)
+    hparams.pop("job_dir", None)
+    hparams.pop("job-dir", None)
 
-    output_dir = hparams.pop('output_dir')
+    output_dir = hparams.pop("output_dir")
 
     # Append trial_id to path so hyper-parameter tuning doesn't overwrite each other
     # NOTE: Not 100% clear on how this works yet
     # TODO: Reimplement this later
     output_dir = os.path.join(
         output_dir,
-        json.loads(
-            os.environ.get('TF_CONFIG', '{}')
-        ).get('task', {}).get('trial', '')
+        json.loads(os.environ.get("TF_CONFIG", "{}")).get("task", {}).get("trial", ""),
     )
 
     # Calculate train_steps if not provided
-    if hparams['train_steps'] < 1:
+    if hparams["train_steps"] < 1:
         # 10,000 steps at batch size of 512
-        hparams['train_steps'] = (10000 * 512) // hparams['train_batch_size']
-        print('Training for {} steps'.format(hparams['train_steps']))
+        hparams["train_steps"] = (10000 * 512) // hparams["train_batch_size"]
+        print("Training for {} steps".format(hparams["train_steps"]))
 
     # Run the training job
     model.train_and_evaluate(output_dir, hparams)

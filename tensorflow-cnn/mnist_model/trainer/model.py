@@ -14,9 +14,9 @@ import os
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-HEIGHT=28
-WIDTH=28
-NCLASSES=10
+HEIGHT = 28
+WIDTH = 28
+NCLASSES = 10
 
 # model function
 # TODO: Enable hyperparameter tuning; see params dict in https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator
@@ -32,8 +32,8 @@ def cnn_model_fn(img, mode, params):
     # conv. layer #1
     conv1 = tf.layers.conv2d(
         inputs=input_layer,
-        filters=params['nfil1'],
-        kernel_size=params['ksize1'],
+        filters=params["nfil1"],
+        kernel_size=params["ksize1"],
         padding="same",
         activation=tf.nn.relu,
         name="conv1",
@@ -47,8 +47,8 @@ def cnn_model_fn(img, mode, params):
     # conv. layer #2
     conv2 = tf.layers.conv2d(
         inputs=pool1,
-        filters=params['nfil2'],
-        kernel_size=params['ksize2'],
+        filters=params["nfil2"],
+        kernel_size=params["ksize2"],
         padding="same",
         activation=tf.nn.relu,
         name="conv2",
@@ -61,7 +61,8 @@ def cnn_model_fn(img, mode, params):
 
     # flatten output
     pool2_flat = tf.reshape(
-        pool2, [-1, pool2.shape[1] * pool2.shape[2] * pool2.shape[3]]) # pool2 height * width * channels
+        pool2, [-1, pool2.shape[1] * pool2.shape[2] * pool2.shape[3]]
+    )  # pool2 height * width * channels
 
     # dense layer
     dense = tf.layers.dense(
@@ -70,7 +71,9 @@ def cnn_model_fn(img, mode, params):
 
     # dropout layer
     dropout = tf.layers.dropout(
-        inputs=dense, rate=params['drop_prob'], training=(mode == tf.estimator.ModeKeys.TRAIN)
+        inputs=dense,
+        rate=params["drop_prob"],
+        training=(mode == tf.estimator.ModeKeys.TRAIN),
     )
 
     # logits layer
@@ -80,19 +83,19 @@ def cnn_model_fn(img, mode, params):
 
 
 def image_classifier(features, labels, mode, params):
-    '''Generates estimator spec using the provided hyper-parameters in params.
-    '''
+    """Generates estimator spec using the provided hyper-parameters in params.
+    """
     # Select from available models
-    model_functions = {
-        'cnn': cnn_model_fn
-    }
-    model_fn = model_functions[params['model']]
-    logits, nclasses = model_fn(features['image'], mode, params)
+    model_functions = {"cnn": cnn_model_fn}
+    model_fn = model_functions[params["model"]]
+    logits, nclasses = model_fn(features["image"], mode, params)
 
     # Find class prediction and class probabilities
     predictions = {
         # generate predictions for PREDICT and EVAL model
-        "classes": tf.argmax(input=logits, axis=1),  # NOTE: do we need tf.cast(..., tf.unit8)?
+        "classes": tf.argmax(
+            input=logits, axis=1
+        ),  # NOTE: do we need tf.cast(..., tf.unit8)?
         # add `softmax_tensor` to graph; used for PREDICT and logging_hook
         "probabilities": tf.nn.softmax(logits, name="softmax_tensor"),
     }
@@ -101,8 +104,10 @@ def image_classifier(features, labels, mode, params):
     # NOTE: what is an Op?
     if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL:
         # TRAIN
-        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)  # NOTE: interesting it takes the logits
-        
+        loss = tf.losses.sparse_softmax_cross_entropy(
+            labels=labels, logits=logits
+        )  # NOTE: interesting it takes the logits
+
         # EVAL
         eval_metric_ops = {
             "accuracy": tf.metrics.accuracy(
@@ -111,14 +116,16 @@ def image_classifier(features, labels, mode, params):
         }
 
         if mode == tf.estimator.ModeKeys.TRAIN:
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
+            optimizer = tf.train.GradientDescentOptimizer(
+                learning_rate=params["learning_rate"]
+            )
             train_op = optimizer.minimize(
                 loss=loss,
                 global_step=tf.train.get_global_step(),  # NOTE: what's a global_step?
             )
         else:
             train_op = None
-    
+
     # PREDICT
     else:
         loss = None
@@ -131,8 +138,7 @@ def image_classifier(features, labels, mode, params):
         loss=loss,
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
-        export_outputs={
-            'classes': tf.estimator.export.PredictOutput(predictions)}
+        export_outputs={"classes": tf.estimator.export.PredictOutput(predictions)},
     )
 
 
@@ -161,20 +167,20 @@ def train_and_evaluate(output_dir, hparams):
             "image": train_data
         },  # defined as a dict with key of feature name and value of tensor
         y=train_labels,
-        batch_size=hparams['train_batch_size'],
+        batch_size=hparams["train_batch_size"],
         num_epochs=None,
         shuffle=True,
-        queue_capacity=5000
+        queue_capacity=5000,
     )
 
     # Eval Input Function
     eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-        x={"image": eval_data}, 
-        y=eval_labels, 
-        batch_size=hparams['train_batch_size'],
-        num_epochs=1, 
+        x={"image": eval_data},
+        y=eval_labels,
+        batch_size=hparams["train_batch_size"],
+        num_epochs=1,
         shuffle=False,
-        queue_capacity=5000
+        queue_capacity=5000,
     )
 
     # create the estimator
@@ -182,27 +188,20 @@ def train_and_evaluate(output_dir, hparams):
         model_fn=image_classifier,
         params=hparams,
         config=tf.estimator.RunConfig(
-            save_checkpoints_secs=EVAL_INTERVAL # checkpoint save interval
+            save_checkpoints_secs=EVAL_INTERVAL  # checkpoint save interval
         ),
-        model_dir=output_dir  # location to save checkpoints
+        model_dir=output_dir,  # location to save checkpoints
     )
 
     # Train Spec
     train_spec = tf.estimator.TrainSpec(
-        input_fn=train_input_fn, 
-        max_steps=hparams['train_steps']
-        )
+        input_fn=train_input_fn, max_steps=hparams["train_steps"]
+    )
 
     # Eval Spec
     eval_spec = tf.estimator.EvalSpec(
-        input_fn=eval_input_fn,
-        steps=None,
-        throttle_secs=EVAL_INTERVAL, name="eval"
+        input_fn=eval_input_fn, steps=None, throttle_secs=EVAL_INTERVAL, name="eval"
     )
 
     # Train and evaluate loop
-    tf.estimator.train_and_evaluate(
-        estimator,
-        train_spec, 
-        eval_spec
-        )
+    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
