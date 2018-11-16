@@ -118,3 +118,4 @@ capstone/
 # mypy
 .mypy_cache/
 tensorflow-cnn/*/checkpoints/
+tensorflow-cnn/*/checkpoint/
