@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Input Arguments
     parser.add_argument(
-        "--train_batch_size",
+        "--batch_size",
         help="Batch size for training steps",
         type=int,
         default=100,
@@ -42,6 +42,11 @@ if __name__ == "__main__":
         help="Directory containing directories of images where each directory is the label",
         required=True
     )
+    parser.add_argument(
+        '--augment', 
+        help='if specified, augment image data', 
+        dest='augment', action='store_true')
+    parser.set_defaults(augment=False)
 
     # Generate list of model functions to print in help message
     model_names = [
@@ -89,13 +94,12 @@ if __name__ == "__main__":
         type=float, 
         default=0.25
     )
-    # parser.add_argument(
-    #     "--batch_norm",
-    #     help="if specified, do batch_norm for CNN",
-    #     dest="batch_norm",
-    #     action="store_true",
-    # )
-    # parser.set_defaults(batch_norm=False)
+    parser.add_argument(
+        '--batch_norm', 
+        help='if specified, do batch_norm for CNN', 
+        dest='batch_norm', 
+        action='store_true')
+    parser.set_defaults(batch_norm=False)
 
     args = parser.parse_args()
     hparams = args.__dict__
@@ -119,7 +123,7 @@ if __name__ == "__main__":
     # Calculate train_steps if not provided
     if hparams['train_steps'] < 1:
         # 10,000 steps at batch size of 512
-        hparams['train_steps'] = (10000 * 512) // hparams['train_batch_size']
+        hparams['train_steps'] = (10000 * 512) // hparams['batch_size']
         print('Training for {} steps'.format(hparams['train_steps']))
 
     # Run the training job
