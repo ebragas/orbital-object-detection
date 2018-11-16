@@ -1,5 +1,6 @@
 # Parameters
-JOB_NAME=flower_satellites_$(date +"%y%m%d_%H%M%S")
+JOB_NAME=satellite_$(date +"%y%m%d_%H%M%S")
+SCALE_TIER=BASIC
 MODEL_BUCKET=gs://reliable-realm-222318-mlengine
 DATA_BUCKET=gs://reliable-realm-222318-vcm
 OUTDIR=${MODEL_BUCKET}/${JOB_NAME}
@@ -12,11 +13,11 @@ gcloud ml-engine jobs submit training $JOB_NAME \
     --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
     --job-dir=$OUTDIR/job \
     --staging-bucket=$MODEL_BUCKET \
-    --scale-tier=STANDARD_1 \
+    --scale-tier=$SCALE_TIER \
     --runtime-version=1.8 \
     -- \
     --output_dir=$OUTDIR/output \
-    --train_steps=20000 \
+    --train_steps=500 \
     --learning_rate=0.01 \
     --batch_size=20 \
     --model=cnn \
