@@ -3,5 +3,5 @@ gcloud ml-engine local train \
     --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
     -- \
     --output_dir=checkpoints \
-    --image_dir=${PWD}/data/imgs \
+    --image_dir=gs://reliable-realm-222318-vcm/satellite_imgs/csv/all_data.csv \
     --model=cnn
