@@ -1,34 +1,29 @@
-# Submission variables
-JOB_NAME=satellite_basic_$(date +"%y%m%d_%H%M%S")
+# Parameters
+JOB_NAME=flower_satellites_$(date +"%y%m%d_%H%M%S")
 MODEL_BUCKET=gs://reliable-realm-222318-mlengine
 DATA_BUCKET=gs://reliable-realm-222318-vcm
 OUTDIR=${MODEL_BUCKET}/${JOB_NAME}
 REGION=us-central1
 
-echo ${DATA_BUCKET} ${MODEL_BUCKET} ${OUTDIR} ${JOB_NAME}
-
-gsutil -m rm -rf $OUTDIR
-
 # Submit job
 gcloud ml-engine jobs submit training $JOB_NAME \
-    --region=$REGION \
+    --region=us-central1 \
     --module-name=trainer.task \
     --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
     --job-dir=$OUTDIR/job \
     --staging-bucket=$MODEL_BUCKET \
     --scale-tier=STANDARD_1 \
-    --runtime-version=1.10 \
+    --runtime-version=1.8 \
     -- \
-    --model=cnn \
     --output_dir=$OUTDIR/output \
-    --train_steps=5000 \
+    --train_steps=20000 \
     --learning_rate=0.01 \
-    --batch_size=40 \
-    --nfil1=64 \
-    --nfil2=32 \
-    --ksize1=5 \
-    --ksize2=5 \
-    --image_dir=${DATA_BUCKET}/satellite_imgs/csv/all_data.csv
+    --batch_size=20 \
+    --model=cnn \
+    --train_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/train_data.csv \
+    --eval_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/valid_data.csv
+    --augment \
+    --batch_norm
 
 # Cancel job
 # gcloud ml-engine jobs cancel $JOB_NAME

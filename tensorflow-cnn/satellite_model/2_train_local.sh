@@ -1,10 +1,14 @@
+MODEL=satellite_model
+
 gcloud ml-engine local train \
     --module-name=trainer.task \
-    --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
+    --package-path=${PWD}/tensorflow-cnn/${MODEL}/trainer \
     -- \
-    --output_dir=checkpoints \
-    --train_steps=500 \
+    --output_dir=${PWD}/tensorflow-cnn/${MODEL}/checkpoint \
+    --train_steps=5 \
     --learning_rate=0.01 \
-    --batch_size=40 \
+    --batch_size=2 \
     --model=cnn \
-    --image_dir=gs://reliable-realm-222318-vcm/satellite_imgs/csv/all_data.csv
+    --augment \
+    --train_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/train_data.csv \
+    --eval_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/valid_data.csv
