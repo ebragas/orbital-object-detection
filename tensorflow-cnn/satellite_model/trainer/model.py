@@ -6,7 +6,7 @@ import tensorflow as tf
 import collections
 import os
 
-tf.logging.set_verbosity(tf.logging.DEBUG)
+tf.logging.set_verbosity(tf.logging.INFO)
 
 LIST_OF_LABELS = "no_ship,ship".split(",")
 HEIGHT = 80
@@ -218,7 +218,7 @@ def make_input_fn(image_dir, batch_size, mode, augment=False):
         # Set epochs and shuffling
         if mode == tf.estimator.ModeKeys.TRAIN:
             num_epochs = None  # indefinitely
-            dataset = dataset.shuffle(buffer_size=10 * batch_size)
+            # dataset = dataset.shuffle(buffer_size=10 * batch_size)
         else:
             num_epochs = 1  # end-of-input after this
 
@@ -263,23 +263,30 @@ def image_classifier(features, labels, mode, params):
         )
         labels = labels_table.lookup(labels)
 
-        loss = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits_v2(
-                logits=ylogits, labels=tf.one_hot(labels, nclasses)
-            )
-        )
+        # loss = tf.reduce_mean(
+        #     tf.nn.softmax_cross_entropy_with_logits_v2(
+        #         logits=ylogits, labels=tf.one_hot(labels, nclasses)
+        #     )
+        # )
+
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=ylogits)
+
         evalmetrics = {"accuracy": tf.metrics.accuracy(class_int, labels)}
 
         # Backprop operation
         if mode == tf.estimator.ModeKeys.TRAIN:
             # this is needed for batch normalization, but has no effect otherwise
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            with tf.control_dependencies(update_ops):
-                optimizer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
-                train_op = optimizer.minimize(
-                    loss=loss,
-                    global_step=tf.train.get_global_step(),  # NOTE: what's a global_step?
-            )
+            # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            # with tf.control_dependencies(update_ops):
+            #     optimizer = tf.train.GradientDescentOptimizer(learning_rate=params['learning_rate'])
+            #     train_op = optimizer.minimize(
+            #         loss=loss,
+            #         global_step=tf.train.get_global_step(),  # NOTE: what's a global_step?
+            # )
+
+            optimizer = tf.train.AdamOptimizer(params['learning_rate'])
+            train_op = optimizer.minimize(loss)
+            
         else:
             train_op = None
     else:
