@@ -11,8 +11,7 @@ gcloud ml-engine jobs submit training $JOB_NAME \
     --region=us-central1 \
     --module-name=trainer.task \
     --package-path=${PWD}/tensorflow-cnn/satellite_model/trainer \
-    --job-dir=$OUTDIR/job \
-    --staging-bucket=$MODEL_BUCKET \
+    --job-dir=$OUTDIR \
     --scale-tier=$SCALE_TIER \
     --runtime-version=1.8 \
     -- \
