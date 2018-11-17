@@ -15,8 +15,20 @@ LIST_OF_LABELS = "no_ship,ship".split(",")
 HEIGHT = 80
 WIDTH = 80
 NUM_CHANNELS = 3
-NCLASSES = 5
+NCLASSES = len(LIST_OF_LABELS)
 
+
+def tuning_metric(labels, predictions):
+    # convert string true label to int
+    labels_table = tf.contrib.lookup.index_table_from_tensor(
+        tf.constant(LIST_OF_LABELS)
+    )
+    labels = labels_table.lookup(labels)
+    pred_values = predictions['classid']
+
+    # return {"accuracy": tf.metrics.accuracy(pred_values, labels)}
+    return {"f1_score": tf.contrib.metrics.f1_score(labels, pred_values)}
+    
 
 def linear_model(img, mode, hparams):
     X = tf.reshape(img, [-1, HEIGHT * WIDTH * NUM_CHANNELS])  # flatten
@@ -254,6 +266,9 @@ def train_and_evaluate(output_dir, hparams):
         config=tf.estimator.RunConfig(save_checkpoints_secs=EVAL_INTERVAL),
         model_dir=output_dir,
     )
+
+    estimator = tf.contrib.estimator.add_metrics(estimator, tuning_metric)
+
     train_spec = tf.estimator.TrainSpec(
         input_fn=make_input_fn(
             hparams["train_data_path"],
@@ -263,7 +278,9 @@ def train_and_evaluate(output_dir, hparams):
         ),
         max_steps=hparams["train_steps"],
     )
+
     exporter = tf.estimator.LatestExporter("exporter", serving_input_fn)
+    
     eval_spec = tf.estimator.EvalSpec(
         input_fn=make_input_fn(
             hparams["eval_data_path"],

@@ -66,7 +66,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         help="Type of model. Supported types are {}".format(model_names),
-        required=True,
+        default='cnn',
     )
     parser.add_argument(
         "--job-dir",
