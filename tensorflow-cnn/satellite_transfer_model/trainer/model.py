@@ -116,33 +116,12 @@ def cnn_model(img, mode, hparams):
 
 
 def transfer_cnn_model(img, mode, hparams):
+    # TODO: Remove; I don't think they're necessary
     # ksize1 = hparams.get("ksize1", 5)
     # ksize2 = hparams.get("ksize2", 5)
     # nfil1 = hparams.get("nfil1", 10)
     # nfil2 = hparams.get("nfil2", 20)
-    dprob = hparams.get("dprob", 0.25)
-
-    # c1 = tf.layers.conv2d(
-    #     img,
-    #     filters=nfil1,
-    #     kernel_size=ksize1,
-    #     strides=1,
-    #     padding="same",
-    #     activation=tf.nn.relu,
-    # )
-    # p1 = tf.layers.max_pooling2d(c1, pool_size=2, strides=2)
-    # c2 = tf.layers.conv2d(
-    #     p1,
-    #     filters=nfil2,
-    #     kernel_size=ksize2,
-    #     strides=1,
-    #     padding="same",
-    #     activation=tf.nn.relu,
-    # )
-    # p2 = tf.layers.max_pooling2d(c2, pool_size=2, strides=2)
-
-    # outlen = p2.shape[1] * p2.shape[2] * p2.shape[3]
-    # p2flat = tf.reshape(p2, [-1, outlen])  # flattened
+    # dprob = hparams.get("dprob", 0.25)
 
     # Download module
     tf.logging.info('LOADING inception_v3 module...')
@@ -150,23 +129,8 @@ def transfer_cnn_model(img, mode, hparams):
     module = hub.Module("https://tfhub.dev/google/imagenet/inception_v3/classification/1", trainable=False)
     prelogits = module(img)
 
-    # resize imgs
-    # height, width = hub.get_expected_image_size(module)
-    # img = tf.image.resize_bilinear(img, [height, width])
-
-    # # apply batch normalization
-    # if hparams["batch_norm"]:
-    #     h3 = tf.layers.dense(p2flat, 300, activation=None)
-    #     h3 = tf.layers.batch_normalization(
-    #         h3, training=(mode == tf.estimator.ModeKeys.TRAIN)
-    #     )  # only batchnorm when training
-    #     h3 = tf.nn.relu(h3)
-    # else:
-    #     h3 = tf.layers.dense(p2flat, 300, activation=tf.nn.relu)
-
-    # dense = tf.layers.dense(module_output, 1001, activation=tf.nn.relu)
-
     # Additional layers
+    # TODO: Tune these layers
     dense_256 = tf.layers.dense(prelogits, 256, activation=tf.nn.relu)
     
     dense_128 = tf.layers.dense(dense_256, 128, activation=tf.nn.relu)
@@ -176,14 +140,13 @@ def transfer_cnn_model(img, mode, hparams):
     dense_32 = tf.layers.dense(dense_64, 32, activation=tf.nn.relu)
 
     dropout = tf.layers.dropout(
-        dense_32, rate=dprob, training=(mode == tf.estimator.ModeKeys.TRAIN)
+        dense_32, rate=hparams['dprob'], training=(mode == tf.estimator.ModeKeys.TRAIN)
     )
     
-    # logits = tf.layers.dense(dense_32, NUM_CLASSES, activation=None)
-
     ylogits = tf.layers.dense(dropout, NCLASSES, activation=None)
 
     # # apply batch normalization once more
+    # TODO: Decide if useful
     # if hparams["batch_norm"]:
     #     ylogits = tf.layers.batch_normalization(
     #         ylogits, training=(mode == tf.estimator.ModeKeys.TRAIN)

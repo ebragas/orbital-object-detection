@@ -2,7 +2,7 @@ trainingInput:
   scaleTier: BASIC_GPU # BASIC | BASIC_GPU | BASIC_TPU | STANDARD_1 | PREMIUM_1
   pythonVersion: '3.5'
   runtimeVersion: '1.10'
-  region: us-central1
+  region: us-west1
 
 ######### example of custom scale tier config ##############
 #  scaleTier: CUSTOM
