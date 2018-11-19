@@ -7,9 +7,7 @@
 4. Request scene from Planet
 5. Write API response and labels to Datastore
 
-# TODO: Cache API responses to file incase of failure during script execution
-# TODO: Handle API response errors
-# TODO: Check for existing scenes in Datastore before making API requests
+# TODO: output summary of job on completion showing total entities written, successful/failed requests, etc.
 """
 
 from google.cloud import storage
