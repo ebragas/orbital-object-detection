@@ -25,6 +25,7 @@ from itertools import islice
 PROJECT = "reliable-realm-222318"
 DATA_BUCKET = "reliable-realm-222318-vcm"
 IMG_DIR = "satellite_imgs/"
+BATCH_SIZE=10
 
 
 def get_blob_names(client, bucket_name, dir_prefix="/"):
@@ -89,12 +90,24 @@ def request_scene_data(session, scenes, item_type):
         url = 'https://api.planet.com/data/v1/item-types/{}/items/{}'.format(item_type, scene_id)
         
         # TODO: implement unsuccessful request handling
-        response = session.get(url).json()
-        response['labels'] = scenes[scene_id]  # add labels parsed from filename
-        # NOTE: assumes we'll only ever get one set of coordinates
-        response['geometry']['coordinates'] = [GeoPoint(*coords[::-1]) for coords in response['geometry']['coordinates'][0]]
-        scene_data.append(response)
+        # response = session.get(url).json()
+        response = session.get(url)        
+        rjson = response.json()
+    
+        # unsuccessful request
+        if response.status_code != 200:
+            item = {'id': scene_id,
+                    'status_msg': '{}: {}'.format(response.status_code, rjson['general'][0]['message']),
+                    'labels': scenes[scene_id]}
+
+        else:
+            item = rjson
+            item['status_msg'] = str(response.status_code)
+            item['labels'] = scenes[scene_id]  # add labels parsed from filename
+            # NOTE: assumes we'll only ever get one set of coordinates
+            item['geometry']['coordinates'] = [GeoPoint(*coords[::-1]) for coords in rjson['geometry']['coordinates'][0]]
         
+        scene_data.append(item)
         sleep(5)
         print('Done.')
         # break # NOTE: testing only
@@ -148,7 +161,7 @@ if __name__ == "__main__":
     sess.auth = (os.environ['PL_API_KEY'], '')
 
     # Query and store scenes in batches
-    for batch in batch_dict(scenes, 10):
+    for batch in batch_dict(scenes, BATCH_SIZE):
         
         # Make API requests
         response_batch = request_scene_data(sess, batch, 'PSScene3Band')
