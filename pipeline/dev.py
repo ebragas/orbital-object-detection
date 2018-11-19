@@ -43,7 +43,7 @@ def get_blob_names(client, bucket_name, dir_prefix="/"):
     return blob_names
 
 
-def parse_file_names(file_names):
+def parse_blob_names(file_names):
     '''Parse scene and label metadata from a list of filenames.
 
     # TODO: format labels as probas and include class list
@@ -67,6 +67,17 @@ def parse_file_names(file_names):
     return scenes
 
 
+def discard_existing_scenes(scene_dict, client):
+    # query for existing keys
+    query = client.query(kind='PlanetScenes')
+    query.keys_only()
+    entities = list(query.fetch())
+    entity_keys = [e.key.id_or_name for e in entities]
+
+    new_scene_dict = {k: v for k, v in scene_dict.items() if k not in entity_keys}
+    return new_scene_dict
+
+
 def request_scene_data(session, scenes, item_type):
     '''Request the scene data for scenes dictionary and merge results
     '''
@@ -77,6 +88,7 @@ def request_scene_data(session, scenes, item_type):
         print('Downloading scene_id: {}; {} of {}... '.format(scene_id, i + 1, total), end='', flush=True)
         url = 'https://api.planet.com/data/v1/item-types/{}/items/{}'.format(item_type, scene_id)
         
+        # TODO: implement unsuccessful request handling
         response = session.get(url).json()
         response['labels'] = scenes[scene_id]  # add labels parsed from filename
         # NOTE: assumes we'll only ever get one set of coordinates
@@ -125,15 +137,19 @@ if __name__ == "__main__":
     file_names = get_blob_names(storage_client, DATA_BUCKET, IMG_DIR)
 
     # Parse data from name
-    scenes = parse_file_names(file_names)
+    scenes = parse_blob_names(file_names)
+
+    # Don't try to reload scenes we already have
+    datastore_client = datastore.Client(project=PROJECT)
+    scenes = discard_existing_scenes(scenes, datastore_client)
     
-    # Request scene from Planet
+    # Session and client
     sess = requests.Session()
     sess.auth = (os.environ['PL_API_KEY'], '')
-    datastore_client = datastore.Client(project=PROJECT)
 
     # Query and store scenes in batches
     for batch in batch_dict(scenes, 10):
+        
         # Make API requests
         response_batch = request_scene_data(sess, batch, 'PSScene3Band')
 
