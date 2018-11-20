@@ -31,8 +31,8 @@ if __name__ == "__main__":
     downloader = downloader.create(planet_client)
     
     # Get a list of scene_ids from Datastore and GCS
-    datastore_scene_ids = get_datastore_ids(project=PROJECT, kind='PlanetScenes')
-    storage_scene_ids = get_storage_ids(DATA_BUCKET, SCENE_DIR)
+    datastore_scene_ids = get_datastore_ids(project=PROJECT, kind='PlanetScenes', limit=35)
+    storage_scene_ids = get_storage_ids(PROJECT, DATA_BUCKET, SCENE_DIR)
     
     # Download scenes not in that that list of files
     download_queue = []
@@ -42,29 +42,31 @@ if __name__ == "__main__":
         if any([x.startswith(ds_id) for x in storage_scene_ids]):
             continue
 
-        # otherwise, queue for download
-        download_queue.append(ds_id)
+        # otherwise, request items and queue for download
+        item = get_planet_item(ds_id, 'PSScene3Band')
+        if item:
+            download_queue.append(item)
     
     # Request activation of all scene_ids
-    for scene_id in download_queue:
-        # TODO: activate visual assets
-        pass
+    for item in download_queue:
+        # Activate visual assets
+        maybe_activate_asset(item, 'visual')
     
     # Download queued scenes and upload to Cloud Storage
-    for scene_id in download_queue:
-        
-        # Download from Planet
-        logging.info('Downloading scene_id: {}'.format(scene_id))
-        item = planet_client.get_item('PSScene3Band', scene_id).get()
+    # TODO: create item downloading function
+    # TODO: clean-up file exists checks in tmp dir
+    for item in download_queue:
+        logging.info('Downloading scene_id: {}'.format(item['id']))
         
         # Check file not in tmp dir
-        if not any([scene_id in file for file in os.listdir(TMP_DIR)]):
+        if not any([item['id'] in file for file in os.listdir(TMP_DIR)]):
             downloader.download(iter([item]), ['visual'], TMP_DIR)
         else:
             logging.info('File found in tmp directory, skipping download')
 
         # Find downloaded filename
-        tmp_file = [x for x in os.listdir(TMP_DIR) if x.startswith(scene_id)][0]
+        # TODO: find a way to get this from downloader
+        tmp_file = [x for x in os.listdir(TMP_DIR) if x.startswith(item['id'])][0]
 
         # Upload to storage
         logging.info('Uploading file to GCS')
