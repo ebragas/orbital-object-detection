@@ -2,6 +2,7 @@
 
 # TODO: Write description
 # TODO: Write function doc strings
+# TODO: AUPR curve
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,11 +25,11 @@ def tuning_metric(labels, predictions):
         tf.constant(LIST_OF_LABELS)
     )
     labels = labels_table.lookup(labels)
-    pred_values = predictions['classid']
+    pred_values = predictions["classid"]
 
     # return {"accuracy": tf.metrics.accuracy(pred_values, labels)}
     return {"f1_score": tf.contrib.metrics.f1_score(labels, pred_values)}
-    
+
 
 def linear_model(img, mode, hparams):
     X = tf.reshape(img, [-1, HEIGHT * WIDTH * NUM_CHANNELS])  # flatten
@@ -280,7 +281,7 @@ def train_and_evaluate(output_dir, hparams):
     )
 
     exporter = tf.estimator.LatestExporter("exporter", serving_input_fn)
-    
+
     eval_spec = tf.estimator.EvalSpec(
         input_fn=make_input_fn(
             hparams["eval_data_path"],
