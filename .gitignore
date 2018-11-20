@@ -5,6 +5,7 @@
 *.json
 *.local
 *.gz
+*.tif
 
 # TensorFlow Hub files
 image-retraining/tf_files/bottlenecks/
