@@ -19,6 +19,8 @@ from time import sleep
 from itertools import islice
 # import json  # NOTE: dev only
 
+from pipeline.utils import get_blob_names
+
 # TODO: Add cmd-line args
 PROJECT = "reliable-realm-222318"
 DATA_BUCKET = "reliable-realm-222318-vcm"
@@ -26,20 +28,20 @@ IMG_DIR = "satellite_imgs/"
 BATCH_SIZE=10
 
 
-def get_blob_names(client, bucket_name, dir_prefix="/"):
-    """Get a list of blob names for the given bucket, filter using the prefix.
-    Returns list of names as strings
+# def get_blob_names(client, bucket_name, dir_prefix="/"):
+#     """Get a list of blob names for the given bucket, filter using the prefix.
+#     Returns list of names as strings
 
-    # TODO: Project name attribute instead of pulling full blob"""
+#     # TODO: Project name attribute instead of pulling full blob"""
 
-    print('Retrieving blob names... ', end='', flush=True)
-    bucket = client.get_bucket(bucket_name=bucket_name)
-    blob_names = [
-        x.name for x in bucket.list_blobs(prefix=dir_prefix) if x.name.endswith(".png")
-    ]
+#     print('Retrieving blob names... ', end='', flush=True)
+#     bucket = client.get_bucket(bucket_name=bucket_name)
+#     blob_names = [
+#         x.name for x in bucket.list_blobs(prefix=dir_prefix) if x.name.endswith(".png")
+#     ]
 
-    print('Done.')
-    return blob_names
+#     print('Done.')
+#     return blob_names
 
 
 def parse_blob_names(file_names):
