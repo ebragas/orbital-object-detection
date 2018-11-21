@@ -35,6 +35,7 @@ if __name__ == "__main__":
     storage_scene_ids = get_storage_ids(PROJECT, DATA_BUCKET, SCENE_DIR)
     
     # Download scenes not in that that list of files
+    # TODO: batch downloading to avoid using up quota on activations of large queue
     download_queue = []
     for ds_id in datastore_scene_ids:
 
@@ -53,12 +54,12 @@ if __name__ == "__main__":
         maybe_activate_asset(item, 'visual')
     
     # Download queued scenes and upload to Cloud Storage
-    # TODO: create item downloading function
     # TODO: clean-up file exists checks in tmp dir
     for item in download_queue:
         logging.info('Downloading scene_id: {}'.format(item['id']))
         
         # Check file not in tmp dir
+        # TODO: move downloader to function and handle exceptions
         if not any([item['id'] in file for file in os.listdir(TMP_DIR)]):
             downloader.download(iter([item]), ['visual'], TMP_DIR)
         else:
