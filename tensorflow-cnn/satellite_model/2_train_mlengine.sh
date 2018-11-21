@@ -1,6 +1,6 @@
 # Parameters
-JOB_NAME=satellite_hptune_$(date +"%y%m%d_%H%M%S")
-SCALE_TIER=BASIC_GPU
+JOB_NAME=satellite_training_$(date +"%y%m%d_%H%M%S")
+# SCALE_TIER=BASIC_GPU  # moved to config.yaml
 MODEL_BUCKET=gs://reliable-realm-222318-mlengine
 DATA_BUCKET=gs://reliable-realm-222318-vcm
 OUTDIR=${MODEL_BUCKET}/${JOB_NAME}              # training output dir
@@ -26,3 +26,4 @@ gcloud ml-engine jobs submit training $JOB_NAME \
 # Cancel job
 # gcloud ml-engine jobs cancel $JOB_NAME
 # gcloud ml-engine jobs list
+

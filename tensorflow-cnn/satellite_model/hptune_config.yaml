@@ -1,8 +1,40 @@
 trainingInput:
-  scaleTier: STANDARD_1 # BASIC | BASIC_GPU | BASIC_TPU | STANDARD_1 | PREMIUM_1
+  scaleTier: BASIC # BASIC | BASIC_GPU | BASIC_TPU | STANDARD_1 | PREMIUM_1
   pythonVersion: '3.5'
   runtimeVersion: '1.10'
   region: us-central1
+  hyperparameters:
+    goal: MINIMIZE # Set to MINIMIZE or MAXIMIZE (e.g. rmse vs. accuracy)
+    hyperparameterMetricTag: accuracy_metric # Set to the name of the metric you assigned to the estimator
+    enableTrialEarlyStopping: True
+    maxTrials: 30
+    maxParallelTrials: 4
+    params:
+    - parameterName: ksize1
+      type: INTEGER
+      minValue: 3
+      maxValue: 5
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: ksize2
+      type: INTEGER
+      minValue: 3
+      maxValue: 5
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: nfil1
+      type: INTEGER
+      minValue: 60
+      maxValue: 120
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: nfil2
+      type: INTEGER
+      minValue: 30
+      maxValue: 60
+      scaleType: UNIT_LINEAR_SCALE
+    - parameterName: dprob
+      type: DOUBLE
+      minValue: 0.0
+      maxValue: 0.5
+      scaleType: UNIT_LINEAR_SCALE
 
 ######### example of custom scale tier config ##############
 #  scaleTier: CUSTOM
