@@ -9,9 +9,9 @@ gcloud ml-engine local train \
     -- \
     --output_dir=${MODEL_DIR}/checkpoints \
     --model=cnn \
-    --train_steps=5 \
+    --train_steps=1 \
     --learning_rate=0.01 \
-    --batch_size=2 \
+    --batch_size=1 \
     --augment \
     --train_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/train_data.csv \
     --eval_data_path=gs://reliable-realm-222318-vcm/satellite_imgs/csv/valid_data.csv

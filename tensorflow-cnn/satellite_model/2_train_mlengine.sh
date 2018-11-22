@@ -15,7 +15,7 @@ gcloud ml-engine jobs submit training $JOB_NAME \
     --config=${MODEL_DIR}/config.yaml \
     -- \
     --output_dir=$OUTDIR/output \
-    --train_steps=1000 \
+    --train_steps=2000 \
     --learning_rate=0.01 \
     --batch_size=20 \
     --train_data_path=${DATA_BUCKET}/satellite_imgs/csv/train_data.csv \

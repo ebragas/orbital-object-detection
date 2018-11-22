@@ -10,13 +10,14 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-tf.logging.set_verbosity(tf.logging.INFO)
+tf.logging.set_verbosity(tf.logging.DEBUG)
 
 LIST_OF_LABELS = "no_ship,ship".split(",")
 HEIGHT = 80
 WIDTH = 80
 NUM_CHANNELS = 3
 NCLASSES = len(LIST_OF_LABELS)
+KEY_COLUMN = 'key'
 
 
 def tuning_metric(labels, predictions):
@@ -142,14 +143,14 @@ def cnn_model(img, mode, hparams):
     return ylogits, NCLASSES
 
 
-def read_and_preprocess_with_augment(image_bytes, label=None):
+def read_and_preprocess_with_augment(image_bytes, label=None, key=None):
     return read_and_preprocess(image_bytes, label, augment=True)
 
 
-def read_and_preprocess(image_bytes, label=None, augment=False):
+def read_and_preprocess(features, label=None, augment=False):
     # Decode the image
     # End up with pixel values that are in the -1, 1 range
-    image = tf.image.decode_jpeg(image_bytes, channels=NUM_CHANNELS)
+    image = tf.image.decode_jpeg(features['image_bytes'], channels=NUM_CHANNELS)
     image = tf.image.convert_image_dtype(image, dtype=tf.float32)  # 0-1
     image = tf.expand_dims(image, 0)    # resize_bilinear needs batches
                                         # TODO: research resize batches
@@ -175,14 +176,21 @@ def read_and_preprocess(image_bytes, label=None, augment=False):
     image = tf.subtract(image, 0.5)
     image = tf.multiply(image, 2.0)
     
-    return {'image': image}, label
+    return {'image': image, 'key': features['key']}, label
 
 
 def serving_input_fn():
     # NOTE: only handles one image at a time; that might be problematic for batch pred.
-    feature_placeholders = {'image_bytes': tf.placeholder(tf.string, shape=())}
-    image, _ = read_and_preprocess(tf.squeeze(feature_placeholders['image_bytes']))
-    image['image'] = tf.expand_dims(image['image'], 0)
+    # feature_placeholders = {"image_bytes": tf.placeholder(tf.string, shape=()), 'key': tf.placeholder(tf.string, shape=())}
+    # feature_placeholders['image_bytes'] = tf.squeeze(feature_placeholders['image_bytes'], 1)
+    # features, _ = read_and_preprocess(feature_placeholders)
+    # features['image'] = tf.expand_dims(features['image'], 0)
+
+    # return tf.estimator.export.ServingInputReceiver(features, feature_placeholders)
+
+    feature_placeholders = {"image_bytes": tf.placeholder(tf.string, shape=()), "key": tf.placeholder(tf.string, shape=())}
+    image, _ = read_and_preprocess(feature_placeholders)
+    image["image"] = tf.expand_dims(image["image"], 0)
     
     return tf.estimator.export.ServingInputReceiver(image, feature_placeholders)
 
@@ -207,8 +215,9 @@ def make_input_fn(csv_of_filenames, batch_size, mode, augment=False):
             '''
             filename, label = tf.decode_csv(csv_row, record_defaults=[[""], [""]])
             image_bytes = tf.read_file(filename)
+            key = tf.cast('-1', tf.string)
             
-            return image_bytes, label
+            return {'image_bytes': image_bytes, 'key': key}, label
 
         # Create tf.data.dataset from filename
         dataset = tf.data.TextLineDataset(csv_of_filenames).map(decode_csv)
@@ -336,6 +345,21 @@ def image_classifier(features, labels, mode, params):
     )
 
 
+def forward_key_to_export(estimator):
+    estimator = tf.contrib.estimator.forward_features(estimator, KEY_COLUMN)
+
+    ## This shouldn't be necessary (I've filed CL/187793590 to update extenders.py with this code)
+    config = estimator.config
+    def model_fn2(features, labels, mode):
+        estimatorSpec = estimator._call_model_fn(features, labels, mode, config=config)
+        if estimatorSpec.export_outputs:
+            for ekey in ['predict', 'serving_default']:
+                estimatorSpec.export_outputs[ekey] = tf.estimator.export.PredictOutput(estimatorSpec.predictions)
+        return estimatorSpec
+    return tf.estimator.Estimator(model_fn=model_fn2, config=config)
+    ##
+
+
 def train_and_evaluate(output_dir, hparams):
     '''Main TensorFlow function. Instantiates the model specifications using
     functions defined in this file (model.py), passing the provided hyper-parameters
@@ -357,8 +381,13 @@ def train_and_evaluate(output_dir, hparams):
         model_dir=output_dir,
     )
 
-    # Hyper-parameter tuning metrics used by ML Engine
+    # Additional metric for HP tuning
     estimator = tf.contrib.estimator.add_metrics(estimator, tuning_metric)
+
+    # Forward keys to prediction output
+    # estimator = tf.contrib.estimator.forward_features(estimator, keys=KEY_COLUMN)
+
+    estimator = forward_key_to_export(estimator)
 
     train_spec = tf.estimator.TrainSpec(
         input_fn=make_input_fn(
