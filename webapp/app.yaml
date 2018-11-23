@@ -1,9 +1,17 @@
 runtime: python
+api_version: 1
+threadsafe: true
 env: flex
 entrypoint: gunicorn -b :$PORT main:app
 
 runtime_config:
   python_version: 3
+
+handlers:
+- url: /static
+  static_dir: static
+- url: /.*
+  script: main.app
 
 # This sample incurs costs to run on the App Engine flexible environment. 
 # The settings below are to reduce costs during testing and are not appropriate
@@ -15,3 +23,5 @@ resources:
   cpu: 1
   memory_gb: 0.5
   disk_size_gb: 10
+env_variables:
+  WEATHER_MAP_KEY: e82a4b5a1bc3d8407eaff3c96096f19e
