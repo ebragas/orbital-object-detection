@@ -184,7 +184,7 @@ if __name__ == '__main__':
 
         # FIXME: Artificially reduce image size for TESTING ONLY
         wd, ln = image.size
-        image = image.crop((wd // 2, 0, wd // 1.3, ln // 2))
+        image = image.crop((wd // 2, 0, wd // 1.5, ln // 2))
 
         bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
 
@@ -203,7 +203,7 @@ if __name__ == '__main__':
         upload_image_blob(project=PROJECT_NAME,
                           bucket_name=BUCKET_NAME,
                           dir_prefix=OUTPUT_DIR,
-                          blob_name='test',
+                          blob_name=annotated_blob_name,
                           image=annotated_image,
                           content_type=raw_blob.content_type,
                           format='PNG')
