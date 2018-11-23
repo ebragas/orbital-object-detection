@@ -13,12 +13,12 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from pipeline.utils import *
+from utils import *
 
 PROJECT = 'reliable-realm-222318'
 DATA_BUCKET = 'reliable-realm-222318-vcm'
 SCENE_DIR = 'pipeline/full/'
-TMP_DIR = '/Users/ericbragas/galvanize/satellite-object-detection-case-study/data/tmp'
+TMP_DIR = './data/tmp'
 
 # API key automatically read from PL_API_KEY env. variable
 # client = api.ClientV1()
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     downloader = downloader.create(planet_client)
     
     # Get a list of scene_ids from Datastore and GCS
-    datastore_scene_ids = get_datastore_ids(project=PROJECT, kind='PlanetScenes', limit=35)
+    datastore_scene_ids = get_datastore_ids(project=PROJECT, kind='PlanetScenes', limit=None)
     storage_scene_ids = get_storage_ids(PROJECT, DATA_BUCKET, SCENE_DIR)
     
     # Download scenes not in that that list of files
