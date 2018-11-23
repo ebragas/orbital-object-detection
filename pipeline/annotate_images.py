@@ -8,6 +8,9 @@ from io import BytesIO
 from googleapiclient import discovery
 from google.cloud import storage
 from datetime import datetime
+import multiprocessing
+import threading
+from itertools import product
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -70,59 +73,58 @@ def gen_bounding_box_coords(image, clip_height, clip_width, step_size):
             yield (left, upper, right, lower)
 
 
+def classify_clip(coords, image, project_name, model_name, threshold):
+
+    # Setup client
+    ml = discovery.build('ml', 'v1', cache_discovery=False)
+    model_id = 'projects/{}/models/{}'.format(project_name, model_name)
+
+    # clip image to coords
+    clip = image.copy()
+    clip = clip.crop(coords)
+
+    # save to bytes
+    image_bytes = BytesIO()
+    clip.save(image_bytes, format='PNG')
+
+    # build and execute request
+    # TODO: handle exceptions, retry, etc.
+    body = {
+        'instances': {
+            'image_bytes': {
+                'b64': base64.b64encode(image_bytes.getvalue()).decode()
+            }
+        }
+    }
+    request = ml.projects().predict(name=model_id, body=body)
+    response = request.execute()
+
+    # handle response
+    output = []
+    
+    for prediction in response['predictions']:
+        if prediction['probabilities'][1] > threshold:
+        
+            logging.info('Ship detected at {} with {:.2f}% probability'.format(
+                coords, prediction['probabilities'][1]))
+
+            output.append({coords, prediction})
+        
+    logging.info('Processed coords: {}'.format(coords))
+    return output
+
+
 def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
     '''...
     # TODO: implement multi-threading
     '''
 
-    # Setup clients
-    ml = discovery.build('ml', 'v1', cache_discovery=False)
-    model_id = 'projects/{}/models/{}'.format(project_name, model_name)
-
     total_bboxes = next(bounding_boxes)
-    predictions = {}
-    ship_count = 0
-    total_count = 0
 
-    for coords in bbox_gen:
-        # crop clip
-        clip = image.copy()
-        clip = clip.crop(coords)
+    with multiprocessing.Pool(processes=5) as pool:
+        predictions = pool.starmap(classify_clip, iterable=product(bounding_boxes, image, project_name, model_name, threshold))
 
-        # save to bytes
-        image_bytes = BytesIO()
-        clip.save(image_bytes, format='PNG')
-
-        # build and execute request
-        # TODO: handle exceptions, retry, etc.
-        body = {
-            'instances': {
-                'image_bytes': {
-                    'b64': base64.b64encode(image_bytes.getvalue()).decode()
-                }
-            }
-        }
-        request = ml.projects().predict(name=model_id, body=body)
-        response = request.execute()
-
-        # handle response
-        for prediction in response['predictions']:
-            if prediction['probabilities'][1] > threshold:
-            
-                logging.info('Ship detected at {} with {:.2f}% probability'.format(
-                    coords, prediction['probabilities'][1]))
-            
-                predictions[coords] = prediction
-                ship_count += 1
-
-            total_count += 1
-
-        sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
-
-    logging.info('Total images processed: {}'.format(total_count))
-    logging.info('Total ships detected: {}'.format(ship_count))
-
-    return predictions
+    return {k: v for k, v in predictions}
 
 
 def draw_bounding_boxes(image, predictions, threshold):
