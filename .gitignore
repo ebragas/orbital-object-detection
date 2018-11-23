@@ -106,6 +106,7 @@ env.bak/
 venv.bak/
 capstone/
 gcp-env/
+flex-env/
 
 # Spyder project settings
 .spyderproject
