@@ -182,9 +182,9 @@ if __name__ == '__main__':
         logging.info('Downloading {} as image...'.format(raw_blob.name))
         image = download_image_blob(raw_blob)
 
-        # FIXME: Artificially reduce image size for TESTING ONLY
-        wd, ln = image.size
-        image = image.crop((wd // 2, 0, wd // 1.5, ln // 2))
+        # # FIXME: Artificially reduce image size for TESTING ONLY
+        # wd, ln = image.size
+        # image = image.crop((wd // 2, 0, wd // 1.9, ln // 2))
 
         bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
 
@@ -197,8 +197,9 @@ if __name__ == '__main__':
         annotated_image = draw_bounding_boxes(image, 
                                               predictions, 
                                               threshold=DRAW_THRESHOLD)
-        
-        annotated_blob_name = os.path.basename(raw_blob.name).split('.')[0]
+
+        annotated_blob_name = os.path.join(OUTPUT_DIR, os.path.basename(raw_blob.name).split(
+            '.')[0] + '_annotated_' + datetime.now().strftime('%Y%m%d_%H%M%S.png'))
 
         upload_image_blob(project=PROJECT_NAME,
                           bucket_name=BUCKET_NAME,
@@ -210,7 +211,7 @@ if __name__ == '__main__':
 
         # TODO: Delete completed blobs from input dir, or maybe that's a bad idea... just archive them
 
-        # FIXME: TESTING ONLY
-        break
+        # # FIXME: TESTING ONLY
+        # break
     
     print('Dizz-un!')
