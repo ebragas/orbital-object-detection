@@ -1,336 +1,187 @@
-#!/usr/bin/env python
-
-# TODO: Write description
-# TODO: Write function doc strings
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import tensorflow as tf
 import tensorflow_hub as hub
 
+l = tf.keras.layers
+
+EVAL_INTERVAL = 30 # seconds
+
 tf.logging.set_verbosity(tf.logging.INFO)
 
-LIST_OF_LABELS = "no_ship,ship".split(",")
-HEIGHT = 80
-WIDTH = 80
-NUM_CHANNELS = 3
-NCLASSES = len(LIST_OF_LABELS)
 
 
-def tuning_metric(labels, predictions):
-    # convert string true label to int
-    labels_table = tf.contrib.lookup.index_table_from_tensor(
-        tf.constant(LIST_OF_LABELS)
-    )
-    labels = labels_table.lookup(labels)
-    pred_values = predictions['classid']
-
-    # return {"accuracy": tf.metrics.accuracy(pred_values, labels)}
-    return {"f1_score": tf.contrib.metrics.f1_score(labels, pred_values)}
+def get_data(local_data_root: str, is_chief: bool=True):
+    '''Load sample data locally
+    # TODO: remove
+    '''
+    data_dir = os.path.join(local_data_root, 'datasets/dogscats')
     
-
-def linear_model(img, mode, hparams):
-    X = tf.reshape(img, [-1, HEIGHT * WIDTH * NUM_CHANNELS])  # flatten
-    ylogits = tf.layers.dense(X, NCLASSES, activation=None)
-    return ylogits, NCLASSES
-
-
-def dnn_model(img, mode, hparams):
-    X = tf.reshape(img, [-1, HEIGHT * WIDTH * NUM_CHANNELS])  # flatten
-    h1 = tf.layers.dense(X, 300, activation=tf.nn.relu)
-    h2 = tf.layers.dense(h1, 100, activation=tf.nn.relu)
-    h3 = tf.layers.dense(h2, 30, activation=tf.nn.relu)
-    ylogits = tf.layers.dense(h3, NCLASSES, activation=None)
-    return ylogits, NCLASSES
+    if is_chief:
+        if not tf.gfile.IsDirectory(data_dir):
+            # Download the data zip to our data directory and extract
+            fallback_url = 'http://files.fast.ai/data/dogscats.zip'
+            tf.keras.utils.get_file(
+                os.path.join(local_data_root, os.path.basename(fallback_url)), 
+                fallback_url, 
+                cache_dir=local_data_root,
+                extract=True)
+        
+    return data_dir
 
 
-def dnn_dropout_model(img, mode, hparams):
-    dprob = hparams.get("dprob", 0.1)
+def _img_string_to_tensor(image_string, image_size=(299, 299)):
+    """Decodes jpeg image bytes and resizes into float32 tensor
+    
+    Args:
+      image_string: A Tensor of type string that has the image bytes
+    
+    Returns:
+      float32 tensor of the image
+    """
+    image_decoded = tf.image.decode_jpeg(image_string, channels=3)
+    # Convert from full range of uint8 to range [0,1] of float32.
+    image_decoded_as_float = tf.image.convert_image_dtype(image_decoded, dtype=tf.float32)
+    # Resize to expected
+    image_resized = tf.image.resize_images(image_decoded_as_float, size=image_size)
+    
+    return image_resized
 
-    X = tf.reshape(img, [-1, HEIGHT * WIDTH * NUM_CHANNELS])  # flatten
-    h1 = tf.layers.dense(X, 300, activation=tf.nn.relu)
-    h2 = tf.layers.dense(h1, 100, activation=tf.nn.relu)
-    h3 = tf.layers.dense(h2, 30, activation=tf.nn.relu)
-    h3d = tf.layers.dropout(
-        h3, rate=dprob, training=(mode == tf.estimator.ModeKeys.TRAIN)
-    )  # only dropout when training
-    ylogits = tf.layers.dense(h3d, NCLASSES, activation=None)
-    return ylogits, NCLASSES
+
+def make_dataset(file_pattern, image_size=(299, 299), shuffle=False, batch_size=64, num_epochs=None, buffer_size=4096):
+    """Makes a dataset reading the input images given the file pattern
+    
+    Args:
+      file_pattern: File pattern to match input files with
+      image_size: size to resize images to
+      shuffle: whether to shuffle the dataset
+      batch_size: the batch size of the dataset
+      num_epochs: number of times to repeat iteration of the dataset
+      buffer_size: size of buffer for prefetch and shuffle operations
+    
+    Returns:
+      A tf.data.Dataset with dictionary of key to Tensor for features and label Tensor of type string
+    """
+    
+    def _path_to_img(path):
+        """From the given path returns a feature dictionary and label pair
+        
+        Args:
+          path: A Tensor of type string of the file path to read from
+          
+        Returns:
+          Tuple of dict and tensor. 
+          Dictionary is key to tensor mapping of features
+          Label is a Tensor of type string that is the label for these features
+        """
+        # Get the parent folder of this file to get it's class name
+        label = tf.string_split([path], delimiter='/').values[-2]
+        
+        # Read in the image from disk
+        image_string = tf.io.read_file(path)
+        image_resized = _img_string_to_tensor(image_string, image_size)
+        
+        return { 'image': image_resized }, label
+    
+    dataset = tf.data.Dataset.list_files(file_pattern)
+
+    if shuffle:
+        dataset = dataset.shuffle(buffer_size)
+
+    dataset = dataset.repeat(num_epochs)
+    dataset = dataset.map(_path_to_img)
+    dataset = dataset.batch(batch_size).prefetch(buffer_size)
+
+    return dataset
 
 
-def cnn_model(img, mode, hparams):
-    ksize1 = hparams.get("ksize1", 5)
-    ksize2 = hparams.get("ksize2", 5)
-    nfil1 = hparams.get("nfil1", 10)
-    nfil2 = hparams.get("nfil2", 20)
-    dprob = hparams.get("dprob", 0.25)
+def model_fn(features, labels, mode, params):
+    """tf.estimator model function implementation for retraining an image classifier from a 
+    tf hub module
+    
+    Args:
+      features: dictionary of key to Tensor
+      labels: Tensor of type string
+      mode: estimator mode
+      params: dictionary of parameters
+      
+    Returns:
+      tf.estimator.EstimatorSpec instance
+    """
+    is_training = mode == tf.estimator.ModeKeys.TRAIN
+    module_trainable = is_training and params.get('train_module', False)
 
-    c1 = tf.layers.conv2d(
-        img,
-        filters=nfil1,
-        kernel_size=ksize1,
-        strides=1,
-        padding="same",
-        activation=tf.nn.relu,
-    )
-    p1 = tf.layers.max_pooling2d(c1, pool_size=2, strides=2)
-    c2 = tf.layers.conv2d(
-        p1,
-        filters=nfil2,
-        kernel_size=ksize2,
-        strides=1,
-        padding="same",
-        activation=tf.nn.relu,
-    )
-    p2 = tf.layers.max_pooling2d(c2, pool_size=2, strides=2)
+    module = hub.Module(params['module_spec'], trainable=module_trainable, name=params['module_name'])
+    bottleneck_tensor = module(features['image'])
+    
+    NUM_CLASSES = len(params['label_vocab'])
+    logit_units = 1 if NUM_CLASSES == 2 else NUM_CLASSES
+    logits = l.Dense(logit_units)(bottleneck_tensor)
 
-    outlen = p2.shape[1] * p2.shape[2] * p2.shape[3]
-    p2flat = tf.reshape(p2, [-1, outlen])  # flattened
-
-    # apply batch normalization
-    if hparams["batch_norm"]:
-        h3 = tf.layers.dense(p2flat, 300, activation=None)
-        h3 = tf.layers.batch_normalization(
-            h3, training=(mode == tf.estimator.ModeKeys.TRAIN)
-        )  # only batchnorm when training
-        h3 = tf.nn.relu(h3)
+    if NUM_CLASSES == 2:
+        head = tf.contrib.estimator.binary_classification_head(label_vocabulary=params['label_vocab'])
     else:
-        h3 = tf.layers.dense(p2flat, 300, activation=tf.nn.relu)
+        head = tf.contrib.estimator.multi_class_head(n_classes=NUM_CLASSES, label_vocabulary=params['label_vocab'])
 
-    # apply dropout
-    h3d = tf.layers.dropout(
-        h3, rate=dprob, training=(mode == tf.estimator.ModeKeys.TRAIN)
-    )
-
-    ylogits = tf.layers.dense(h3d, NCLASSES, activation=None)
-
-    # apply batch normalization once more
-    if hparams["batch_norm"]:
-        ylogits = tf.layers.batch_normalization(
-            ylogits, training=(mode == tf.estimator.ModeKeys.TRAIN)
-        )
-
-    return ylogits, NCLASSES
-
-
-def transfer_cnn_model(img, mode, hparams):
-    # TODO: Remove; I don't think they're necessary
-    # ksize1 = hparams.get("ksize1", 5)
-    # ksize2 = hparams.get("ksize2", 5)
-    # nfil1 = hparams.get("nfil1", 10)
-    # nfil2 = hparams.get("nfil2", 20)
-    # dprob = hparams.get("dprob", 0.25)
-
-    # Download module
-    tf.logging.info('LOADING inception_v3 module...')
-    print('LOADING inception_v3 module...')
-    module = hub.Module("https://tfhub.dev/google/imagenet/inception_v3/classification/1", trainable=False)
-    prelogits = module(img)
-
-    # Additional layers
-    # TODO: Tune these layers
-    dense_256 = tf.layers.dense(prelogits, 256, activation=tf.nn.relu)
+    optimizer = tf.train.AdamOptimizer(learning_rate=params.get('learning_rate', 1e-3))
     
-    dense_128 = tf.layers.dense(dense_256, 128, activation=tf.nn.relu)
-    
-    dense_64 = tf.layers.dense(dense_128, 64, activation=tf.nn.relu)
-    
-    dense_32 = tf.layers.dense(dense_64, 32, activation=tf.nn.relu)
-
-    dropout = tf.layers.dropout(
-        dense_32, rate=hparams['dprob'], training=(mode == tf.estimator.ModeKeys.TRAIN)
-    )
-    
-    ylogits = tf.layers.dense(dropout, NCLASSES, activation=None)
-
-    # # apply batch normalization once more
-    # TODO: Decide if useful
-    # if hparams["batch_norm"]:
-    #     ylogits = tf.layers.batch_normalization(
-    #         ylogits, training=(mode == tf.estimator.ModeKeys.TRAIN)
-    #     )
-
-    return ylogits, NCLASSES
-
-
-def read_and_preprocess_with_augment(image_bytes, label=None):
-    return read_and_preprocess(image_bytes, label, augment=True)
-
-
-def read_and_preprocess(image_bytes, label=None, augment=False):
-    # decode the image
-    # end up with pixel values that are in the -1, 1 range
-    image = tf.image.decode_jpeg(image_bytes, channels=NUM_CHANNELS)
-    image = tf.image.convert_image_dtype(image, dtype=tf.float32)  # 0-1
-    image = tf.expand_dims(image, 0)  # resize_bilinear needs batches
-
-    if augment:
-        image = tf.image.resize_bilinear(
-            image, [HEIGHT + 10, WIDTH + 10], align_corners=False
-        )
-        image = tf.squeeze(image)  # remove batch dimension
-        image = tf.random_crop(image, [HEIGHT, WIDTH, NUM_CHANNELS])
-        image = tf.image.random_flip_left_right(image)
-        image = tf.image.random_brightness(image, max_delta=63.0 / 255.0)
-        image = tf.image.random_contrast(image, lower=0.2, upper=1.8)
-    else:
-        image = tf.image.resize_bilinear(image, [HEIGHT, WIDTH], align_corners=False)
-        image = tf.squeeze(image)  # remove batch dimension
-
-    # pixel values are in range [0,1], convert to [-1,1]
-    image = tf.subtract(image, 0.5)
-    image = tf.multiply(image, 2.0)
-    return {"image": image}, label
-
-
-def serving_input_fn():
-    # Note: only handles one image at a time
-    feature_placeholders = {"image_bytes": tf.placeholder(tf.string, shape=())}
-    image, _ = read_and_preprocess(tf.squeeze(feature_placeholders["image_bytes"]))
-    image["image"] = tf.expand_dims(image["image"], 0)
-    return tf.estimator.export.ServingInputReceiver(image, feature_placeholders)
-
-
-def make_input_fn(csv_of_filenames, batch_size, mode, augment=False):
-    def _input_fn():
-        def decode_csv(csv_row):
-            filename, label = tf.decode_csv(csv_row, record_defaults=[[""], [""]])
-            image_bytes = tf.read_file(filename)
-            return image_bytes, label
-
-        # Create tf.data.dataset from filename
-        dataset = tf.data.TextLineDataset(csv_of_filenames).map(decode_csv)
-
-        if augment:
-            dataset = dataset.map(read_and_preprocess_with_augment)
-        else:
-            dataset = dataset.map(read_and_preprocess)
-
-        if mode == tf.estimator.ModeKeys.TRAIN:
-            num_epochs = None  # indefinitely
-            dataset = dataset.shuffle(buffer_size=10 * batch_size)
-        else:
-            num_epochs = 1  # end-of-input after this
-
-        dataset = dataset.repeat(num_epochs).batch(batch_size)
-        return dataset.make_one_shot_iterator().get_next()
-
-    return _input_fn
-
-
-def image_classifier(features, labels, mode, params):
-    model_functions = {
-        "linear": linear_model,
-        "dnn": dnn_model,
-        "dnn_dropout": dnn_dropout_model,
-        "cnn": cnn_model,
-    }
-
-    # select model function
-    model_function = model_functions[params["model"]]
-    ylogits, nclasses = model_function(features["image"], mode, params)
-
-    # find predicted values
-    probabilities = tf.nn.softmax(ylogits)
-    class_int = tf.cast(tf.argmax(probabilities, 1), tf.uint8)
-    class_str = tf.gather(LIST_OF_LABELS, tf.cast(class_int, tf.int32))
-
-    # TRAIN and EVAL
-    if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL:
-
-        # convert string true label to int
-        labels_table = tf.contrib.lookup.index_table_from_tensor(
-            tf.constant(LIST_OF_LABELS)
-        )
-        labels = labels_table.lookup(labels)
-
-        # compute loss and eval metrics
-        loss = tf.reduce_mean(
-            tf.nn.softmax_cross_entropy_with_logits_v2(
-                logits=ylogits, labels=tf.one_hot(labels, nclasses)
-            )
-        )
-
-        eval_metrics = {
-            # NOTE: arg. order might be wrong
-            "accuracy": tf.metrics.accuracy(class_int, labels),
-            "recall": tf.metrics.recall(labels, class_int),
-            "precision": tf.metrics.precision(labels, class_int),
-        }
-
-        if mode == tf.estimator.ModeKeys.TRAIN:
-            # this is needed for batch normalization, but has no effect otherwise
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            with tf.control_dependencies(update_ops):
-                train_op = tf.contrib.layers.optimize_loss(
-                    loss,
-                    tf.train.get_global_step(),
-                    learning_rate=params["learning_rate"],
-                    optimizer="Adam",
-                )
-        else:
-            train_op = None
-    else:
-        loss = None
-        train_op = None
-        eval_metrics = None
-
-    return tf.estimator.EstimatorSpec(
-        mode=mode,
-        predictions={
-            "probabilities": probabilities,
-            "classid": class_int,
-            "class": class_str,
-        },
-        loss=loss,
-        train_op=train_op,
-        eval_metric_ops=eval_metrics,
-        export_outputs={
-            "classes": tf.estimator.export.PredictOutput(
-                {
-                    "probabilities": probabilities,
-                    "classid": class_int,
-                    "class": class_str,
-                }
-            )
-        },
+    return head.create_estimator_spec(
+        features, mode, logits, labels, optimizer=optimizer
     )
 
 
 def train_and_evaluate(output_dir, hparams):
-    EVAL_INTERVAL = 30  # seconds
-    estimator = tf.estimator.Estimator(
-        model_fn=image_classifier,
-        params=hparams,
-        config=tf.estimator.RunConfig(save_checkpoints_secs=EVAL_INTERVAL),
-        model_dir=output_dir,
-    )
 
-    estimator = tf.contrib.estimator.add_metrics(estimator, tuning_metric)
+    # Start up logging
+    tf.logging.info('TF Version {}'.format(tf.__version__))
+    tf.logging.info('GPU Available {}'.format(tf.test.is_gpu_available()))
+    if 'TF_CONFIG' in os.environ:
+        tf.logging.info('TF_CONFIG: {}'.format(os.environ["TF_CONFIG"]))
 
-    train_spec = tf.estimator.TrainSpec(
-        input_fn=make_input_fn(
-            hparams["train_data_path"],
-            hparams["batch_size"],
-            mode=tf.estimator.ModeKeys.TRAIN,
-            augment=hparams["augment"],
-        ),
-        max_steps=hparams["train_steps"],
-    )
+    # Load sample data
+    # TODO: remove
+    data_dir = get_data('/tmp', True)
 
-    exporter = tf.estimator.LatestExporter("exporter", serving_input_fn)
+    # Begin estimator definition, and train/evaluate
+    run_config = tf.estimator.RunConfig(save_checkpoints_secs=EVAL_INTERVAL)
     
-    eval_spec = tf.estimator.EvalSpec(
-        input_fn=make_input_fn(
-            hparams["eval_data_path"],
-            hparams["batch_size"],
-            mode=tf.estimator.ModeKeys.EVAL,
-        ),
-        steps=None,
-        exporters=exporter,
-        start_delay_secs=EVAL_INTERVAL,
-        throttle_secs=EVAL_INTERVAL,
+    data_directory = get_data('/tmp', run_config.is_chief)
+    model_directory = '/tmp/dogscats/run2'
+
+    params = {
+        'module_spec': 'https://tfhub.dev/google/imagenet/resnet_v2_50/feature_vector/1',
+        'module_name': 'resnet_v2_50',
+        'learning_rate': 1e-3,
+        'train_module': False,  # Whether we want to finetune the module
+        'label_vocab': tf.gfile.ListDirectory(os.path.join(data_directory, 'valid'))
+    }
+
+    classifier = tf.estimator.Estimator(
+        model_fn=model_fn,
+        model_dir=model_directory,
+        config=run_config,
+        params=params
     )
-    tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+
+    input_img_size = hub.get_expected_image_size(hub.Module(params['module_spec']))
+
+    # Train
+    train_files = os.path.join(data_directory, 'train', '**/*.jpg')
+
+    def train_input_fn(): return make_dataset(train_files, 
+                                              image_size=input_img_size,
+                                              batch_size=hparams['batch_size'], 
+                                              shuffle=True)
+    train_spec = tf.estimator.TrainSpec(
+        train_input_fn, 
+        max_steps=hparams['train_steps'])
+
+    # Eval
+    eval_files = os.path.join(data_directory, 'valid', '**/*.jpg')
+
+    def eval_input_fn(): return make_dataset(eval_files, 
+                                             image_size=input_img_size, 
+                                             batch_size=hparams['batch_size'])
+    
+    eval_spec = tf.estimator.EvalSpec(eval_input_fn)
+
+    tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
