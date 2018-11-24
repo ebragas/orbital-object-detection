@@ -16,7 +16,7 @@ BUCKET_NAME = 'reliable-realm-222318-vcm'
 MODEL_NAME = 'satellite'
 
 INPUT_DIR = 'pipeline/scenes/raw/'
-OUTPUT_DIR = 'pipeline/scenes/annotated/'
+OUTPUT_DIR = os.path.join('pipeline/scenes/annotated/', MODEL_NAME)
 
 SAVE_THRESHOLD = 0.2
 DRAW_THRESHOLD = 0.9
