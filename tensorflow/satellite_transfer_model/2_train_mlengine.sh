@@ -1,6 +1,6 @@
 # Parameters
 JOB_NAME=satellite_transfer_$(date +"%y%m%d_%H%M%S")
-SCALE_TIER=BASIC_GPU
+SCALE_TIER=STANDARD_1
 MODEL_BUCKET=gs://reliable-realm-222318-mlengine
 DATA_BUCKET=gs://reliable-realm-222318-vcm
 OUTDIR=${MODEL_BUCKET}/${JOB_NAME}              # training output dir

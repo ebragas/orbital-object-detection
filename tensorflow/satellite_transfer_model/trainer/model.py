@@ -137,13 +137,10 @@ def train_and_evaluate(output_dir, hparams):
     if 'TF_CONFIG' in os.environ:
         tf.logging.info('TF_CONFIG: {}'.format(os.environ["TF_CONFIG"]))
 
-    # Load sample data
-    # TODO: remove
-    data_dir = get_data('/tmp', True)
-
     # Begin estimator definition, and train/evaluate
     run_config = tf.estimator.RunConfig(save_checkpoints_secs=EVAL_INTERVAL)
     
+    # TODO: remove
     data_directory = get_data('/tmp', run_config.is_chief)
     model_directory = '/tmp/dogscats/run2'
 
