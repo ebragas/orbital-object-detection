@@ -1,14 +1,19 @@
 # Ignore data files
-*.csv
 *.png
 *.jpg
 *.json
 *.local
 *.gz
 *.tif
+MNIST-data/
+data/
 
 # TensorFlow Hub files
 image-retraining/tf_files/bottlenecks/
+
+# TensorFlow checkpoints
+*/checkpoint/*
+*/checkpoints/
 
 # VS Code
 .vscode/
@@ -120,5 +125,7 @@ flex-env/
 
 # mypy
 .mypy_cache/
-tensorflow-cnn/*/checkpoints/
-tensorflow-cnn/*/checkpoint/
+tensorflow/flowers_model/checkpoint/
+tensorflow/mnist_model/checkpoints/
+tensorflow/satellite_model/checkpoints/
+tensorflow/satellite_transfer_model/checkpoints/
