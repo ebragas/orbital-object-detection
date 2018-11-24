@@ -23,5 +23,3 @@ resources:
   cpu: 1
   memory_gb: 0.5
   disk_size_gb: 10
-env_variables:
-  WEATHER_MAP_KEY: e82a4b5a1bc3d8407eaff3c96096f19e

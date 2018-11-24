@@ -1,14 +1,19 @@
 body {
-    color: #161616;
+    color: #2b2b2b;
     font-family: 'Roboto', sans-serif;
     text-align: center;
     background-color: currentColor;
   }
+  .scene {
+    max-width: 100%;
+    height: auto;
+  }
   .center-on-page {
     position: absolute;
-    top:50%;
-    left: 50%;
-    transform: translate(-50%,-50%);
+    top:10%;
+    left: 5%;
+    right: 5%;
+    /* transform: translate(-50%,-50%); */
   }
   h1 {
     text-align: center;
