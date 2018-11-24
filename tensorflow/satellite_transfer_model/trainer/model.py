@@ -195,7 +195,8 @@ def train_and_evaluate(output_dir, hparams):
     # Hub module params
     # TODO: merge with hparams
     params = {
-        'module_spec': 'https://tfhub.dev/google/imagenet/resnet_v2_50/feature_vector/1',
+        # 'module_spec': 'https://tfhub.dev/google/imagenet/resnet_v2_50/feature_vector/1',
+        'module_spec':'gs://reliable-realm-222318-mlengine/hub_modules/resnetv2/bf05a1aace97eed26e4164630cc681b144e9c38d/',
         'module_name': 'resnet_v2_50',
         'learning_rate': 1e-3,
         'train_module': False,  # Whether we want to finetune the module
