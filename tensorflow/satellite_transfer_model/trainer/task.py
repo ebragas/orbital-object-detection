@@ -8,7 +8,7 @@ import argparse
 import json
 import os
 
-import trainer.old_model as model
+import trainer.model as model
 import tensorflow as tf
 
 if __name__ == "__main__":
@@ -107,6 +107,11 @@ if __name__ == "__main__":
         json.loads(os.environ.get("TF_CONFIG", "{}")).get("task", {}).get("trial", ""),
     )
 
+    # Start up logging
+    tf.logging.info('TF Version {}'.format(tf.__version__))
+    tf.logging.info('GPU Available {}'.format(tf.test.is_gpu_available()))
+    if 'TF_CONFIG' in os.environ:
+        tf.logging.info('TF_CONFIG: {}'.format(os.environ["TF_CONFIG"]))
+
     # Run the training job
-    # TODO: replace command line args
     model.train_and_evaluate(output_dir, hparams)
