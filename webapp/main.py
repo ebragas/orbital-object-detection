@@ -3,8 +3,6 @@ from pprint import pprint
 import logging
 
 from flask import Flask, flash, redirect, render_template, request, url_for
-from weather import query_api
-# from google.cloud import storage
 
 
 PROJECT = 'reliable-realm-222318'
