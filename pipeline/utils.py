@@ -4,10 +4,15 @@ from planet import api
 import logging
 import os
 import requests
+from requests.auth import HTTPBasicAuth
 import sys
 import numpy as np
 import multiprocessing
 from itertools import repeat
+from datetime import datetime, timedelta
+import json
+
+PL_API_KEY = os.environ['PL_API_KEY']
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
     """Get a list of blob names for the given bucket, filter using the prefix.
@@ -163,7 +168,7 @@ def _get_area(img, degree_rotation):
     return np.prod(img.size)
 
 
-def parallel_auto_rotate(image, processes=4):
+def parallel_image_auto_rotate(image, processes=4):
     '''Iterates over 45 degree range in parallel to find the degree rotation
     of an image that gives the least area
     
@@ -173,3 +178,94 @@ def parallel_auto_rotate(image, processes=4):
     pool = multiprocessing.Pool(processes=processes)
     result = pool.starmap(_get_area, zip(repeat(img), range(45)))
     return np.argmin(result)
+
+
+def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
+    # TODO: Move these search filters to DataStore
+    
+    # Map parameter to geojson file
+    GEOJSON_MAP = {
+        'sf_bay': 'geojson/sf_bay.json',
+    }
+
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    geojson_path = os.path.join(script_dir, GEOJSON_MAP[filter_name])
+
+    # Load geometry
+    with open(geojson_path, 'r') as fp:
+        geojson = fp.read()
+        geojson = json.loads(geojson)
+        geometry = geojson['features'][0]['geometry']
+
+    # Geometry filter
+    geometry_filter = {
+    'type': 'GeometryFilter',
+    'field_name': 'geometry',
+    'config': geometry
+    }
+
+    # filter for date range
+    date_range_filter = {
+        'type': 'DateRangeFilter',
+        'field_name': 'acquired',
+        'config': {
+            'gte': '{}'.format((datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")),
+            'lte': '{}'.format(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+        }
+    }
+
+    # cloud cover filter
+    cloud_cover_filter = {
+        'type': 'RangeFilter',
+        'field_name': 'cloud_cover',
+        'config': {
+            'lte': max_cloud_cover
+        }
+    }
+
+    # combined filters
+    planet_filter = {
+        'type': 'AndFilter',
+        'config': [geometry_filter, date_range_filter, cloud_cover_filter]
+    }
+
+    return planet_filter
+
+
+def planet_search_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_bay', days=1, max_cloud_cover=0.5):
+    
+    request_body = {
+        'item_types': item_types,
+        'filter': planet_build_filter(filter_name, days, max_cloud_cover)
+    }
+    
+    response = requests.post('https://api.planet.com/data/v1/quick-search',
+                             auth=HTTPBasicAuth(PL_API_KEY, ''),
+                             json=request_body)
+
+    return response.json()
+
+
+def planet_stats_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_bay', days=1, max_cloud_cover=0.5):
+    
+    request_body = {
+        'interval': 'day',
+        'item_types': item_types,
+        'filter': planet_build_filter(filter_name, days, max_cloud_cover)
+    }
+
+    response = requests.post('https://api.planet.com/data/v1/stats',
+                             auth=HTTPBasicAuth(PL_API_KEY, ''),
+                             json=request_body)
+
+    return response.json()
+
+
+def planet_get_item_assets(item_id, item_type):
+
+    request_url = ('https://api.planet.com/data/v1/item-types/' +
+        '{}/items/{}/assets/').format(item_type, item_id)
+    
+    response = requests.get(request_url, auth=HTTPBasicAuth(PL_API_KEY))
+
+    return response.json()
