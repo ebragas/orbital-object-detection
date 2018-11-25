@@ -5,7 +5,9 @@ import logging
 import os
 import requests
 import sys
-
+import numpy as np
+import multiprocessing
+from itertools import repeat
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
     """Get a list of blob names for the given bucket, filter using the prefix.
@@ -73,11 +75,6 @@ def cleanup(tmp_dir):
     for file_name in os.listdir(tmp_dir):
         file_path = os.path.join(tmp_dir, file_name)
         os.remove(file_path)
-
-
-def activate_scene_asset(scene_id):
-    pass
-
 
 
 def get_planet_item(item_id, item_type):
@@ -157,3 +154,22 @@ def _over_quota():
     sys.exit(0)
 
 
+def _get_area(img, degree_rotation):
+    '''Gets the area of an image that's been rotated the specified number
+    of degrees, and extra transparent space cropped
+    '''
+    img = img.rotate(degree_rotation, expand=True)
+    img = img.crop(img.getbbox())
+    return np.prod(img.size)
+
+
+def parallel_auto_rotate(image, processes=4):
+    '''Iterates over 45 degree range in parallel to find the degree rotation
+    of an image that gives the least area
+    
+    Used to correct rotated images buffered by transparent pixels on sides.
+    '''
+    img = image.copy()
+    pool = multiprocessing.Pool(processes=processes)
+    result = pool.starmap(_get_area, zip(repeat(img), range(45)))
+    return np.argmin(result)
