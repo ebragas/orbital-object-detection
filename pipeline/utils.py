@@ -12,6 +12,7 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from datetime import datetime, timedelta
 from google.cloud import datastore
 from google.cloud import storage
+from google.cloud.datastore.helpers import GeoPoint
 from google.protobuf.json_format import MessageToDict
 from itertools import repeat
 from planet import api # TODO: replace with requests
@@ -356,14 +357,27 @@ def datastore_batch_upsert(document_list, entity_type, entity_ids):
     
     with client.transaction() as xact:
         client.put_multi(entity_list)
+        
+        # Verify operation
         mutations = xact.mutations
+        mutations = [MessageToDict(mut) for mut in mutations]
 
     # TODO: check all mutations are correct. Is that necessary?
-    logging.debug('Mutations: {}'.format(MessageToDict(mutations)))
+    # logging.debug('Mutations: {}'.format(mutations))
+    logging.info('{} mutations completed'.format(len(mutations)))
 
     return mutations
 
 
+def convert_coord_list_to_geopoints(coordinate_list):
+    '''Convert list of coordinate lists like those returned by Planet API for feature geometries
+    to GeoPoints objects usable by DataStore
+    '''
+    geopoints = []
+    for lon, lat in coordinate_list:
+        geopoints.append(GeoPoint(lat, lon))
+
+    return geopoints
 
 # --------------------- File System ------------------- #
 

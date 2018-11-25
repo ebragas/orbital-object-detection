@@ -19,6 +19,7 @@ from datetime import datetime
 from utils import *
 from pprint import pprint
 from glob import glob
+from google.cloud.datastore.helpers import GeoPoint
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -89,13 +90,19 @@ if __name__ == "__main__":
 
     ENTITY_KIND = 'PlanetScenes'
 
-    # Upsert entity to DataStore
-    # TODO: add transactions
+    # convert coordinates to GeoPoints
+    for feature in feature_list:
+        feature['geometry']['coordinates'] = convert_coord_list_to_geopoints(
+            feature['geometry']['coordinates'][0])
+
+        # NOTE: assumes we only get one geometry, causes intentional data loss otherwise
+
+    # Upsert entities to DataStore
     feature_ids = [feature.pop('id') for feature in feature_list]
     datastore_batch_upsert(feature_list, ENTITY_KIND, feature_ids)
 
 
     run_end = datetime.now()
-    logging.info()
+    logging.info('')
     logging.info('Pipeline completed:\t{}'.format(datetime.now()))
     logging.info('Total runtime:\t{}'.format(run_end - run_start))
