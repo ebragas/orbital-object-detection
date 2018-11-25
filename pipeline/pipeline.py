@@ -13,6 +13,7 @@ import os
 import json
 import requests
 import logging
+from time import sleep
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from utils import *
@@ -36,13 +37,15 @@ if __name__ == "__main__":
     DAYS = 1
     MAX_CLOUD_COVER = 0.5
 
-    # Checkpoint dir
+    # Load checkpoints
     checkpoint_dir = create_tmp_dir(directory_name='tmp')
+    
+    stats_response = maybe_load_from_checkpoint(checkpoint_dir, 'stats_response.json')
+    search_response = maybe_load_from_checkpoint(checkpoint_dir, 'search_response.json')
+    feature_assets = maybe_load_from_checkpoint(checkpoint_dir, 'feature_assets.json')
 
 
     # Get search stats
-    stats_response = maybe_load_from_checkpoint(checkpoint_dir, 'stats_response.json')
-
     if not stats_response: # TODO: improve search by filtering date > newest entity in DataStore
         stats_response = planet_stats_endpoint_request(item_types=ITEM_TYPES,
                                                     filter_name=FILTER_NAME,
@@ -55,46 +58,41 @@ if __name__ == "__main__":
 
 
     # Get features with search endpoint
-    search_response = maybe_load_from_checkpoint(checkpoint_dir, 'search_response.json')
-
     if not search_response:
-        search_response = planet_search_endpoint_request(item_types=ITEM_TYPES,
-                                                        filter_name=FILTER_NAME,
-                                                        days=DAYS,
-                                                        max_cloud_cover=MAX_CLOUD_COVER)
+        search_response = planet_quick_search_endpoint_request(item_types=ITEM_TYPES,
+                                                               filter_name=FILTER_NAME,
+                                                               days=DAYS,
+                                                               max_cloud_cover=MAX_CLOUD_COVER)
         
         write_to_checkpoint(checkpoint_dir, 'search_response.json', search_response)
 
-    # Check count of returned features
+    # Check response quality
     feature_list = search_response.get('features', [])
-    if not feature_list:
-        logging.warn('No features were found for the defined search criteria!')
-    elif len(feature_list) < num_avail_scenes:
+    if len(feature_list) < num_avail_scenes:
         logging.warn("Additional features are available but were missed because paging isn't implemented yet!")
     
 
-    # Get asset data
-    feature_assets = maybe_load_from_checkpoint(checkpoint_dir, 'feature_assets.json')
-    
+    # Get item assets
     if not feature_assets:
         for feature in feature_list:
             if not feature.get('assets', {}):
                 # TODO: make sure this is working as intended; wasn't returning anything before
-                assets = planet_get_item_assets(item_id=feature['id'], item_type=ITEM_TYPES[0])
+                assets = planet_get_item_assets(item=feature, item_type=ITEM_TYPES[0])
                 feature['assets'] = assets
+                sleep(3)
 
-        # Cache features with assets
         write_to_checkpoint(checkpoint_dir, 'feature_assets.json', feature_list)
 
 
 
     # ------------------------ Load to DataStore ---------------------------- #
 
-    ENT_KIND = 'PlanetScenes'
+    ENTITY_KIND = 'PlanetScenes'
 
     # Upsert entity to DataStore
     # TODO: add transactions
-    datastore_batch_upsert(feature_list, ENT_KIND, [feature['id'].pop() for feature in feature_list])
+    feature_ids = [feature.pop('id') for feature in feature_list]
+    datastore_batch_upsert(feature_list, ENTITY_KIND, feature_ids)
 
 
     run_end = datetime.now()

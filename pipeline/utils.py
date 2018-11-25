@@ -1,17 +1,22 @@
-from google.cloud import datastore
-from google.cloud import storage
-from planet import api
+import json
 import logging
+import multiprocessing
 import os
-import requests
-from requests.auth import HTTPBasicAuth
 import sys
 import numpy as np
-import multiprocessing
-from itertools import repeat
-from datetime import datetime, timedelta
-import json
 import pandas as pd
+import requests
+from requests.adapters import HTTPAdapter
+from requests.auth import HTTPBasicAuth
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+from datetime import datetime, timedelta
+from google.cloud import datastore
+from google.cloud import storage
+from google.protobuf.json_format import MessageToDict
+from itertools import repeat
+from planet import api # TODO: replace with requests
+
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
@@ -189,6 +194,8 @@ PL_API_KEY = os.environ['PL_API_KEY']
 
 def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
     # TODO: Move these search filters to DataStore
+    # TODO: ADD WARNING IF FILTER INCLUDES DATES LESS THAN TWO WEEKS OLD
+    #       Planet will give you the feature, but not the assets
     
     # Map parameter to geojson file
     GEOJSON_MAP = {
@@ -219,8 +226,8 @@ def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
         'config': {
             # 'gte': '{}'.format((datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")),
             # 'lte': '{}'.format(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
-            'gte': '2018-10-26T11:00:12Z',
-            'lte': '2018-11-01T11:00:12Z'
+            'gte': '2018-06-01T11:00:12Z',
+            'lte': '2018-06-07T11:00:12Z'
         }
     }
 
@@ -242,7 +249,7 @@ def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
     return planet_filter
 
 
-def planet_search_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_bay', days=1, max_cloud_cover=0.5):
+def planet_quick_search_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_bay', days=1, max_cloud_cover=0.5):
     
     request_body = {
         'item_types': item_types,
@@ -257,6 +264,13 @@ def planet_search_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_
 
     response = response.json()
     logging.debug('Planet Search endpoint repsonse {}'.format(response))
+
+    # Check response quality
+    feature_list = response.get('features', [])
+    if not feature_list:
+        logging.warn('No features were found for the defined search criteria!')
+    else:
+        logging.info('{} features returned'.format(len(feature_list)))    
 
     return response
 
@@ -276,18 +290,38 @@ def planet_stats_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_b
     return response.json()
 
 
-def planet_get_item_assets(item_id, item_type):
+def planet_get_item_assets(item, item_type):
+    '''Get assets using URL specified in item (aka. feature) dictionary
+    '''
 
-    request_url = ('https://api.planet.com/data/v1/item-types/' +
-        '{}/items/{}/assets/').format(item_type, item_id)
+    assets_url = item.get('_links', {}).get('assets', None)
+
+    # Example: "https://api.planet.com/data/v1/item-types/PSScene3Band/items/20180606_182343_1027/assets/"
+
+    if not assets_url:
+        logging.warn('No assets URL specified in item: {}'.format(item['id']))
+        return None    
+
+    # Session config. to avoid SSL errors, see note below
+    session = requests.Session()
+    session.auth = (PL_API_KEY, '')
+    session.mount('http', HTTPAdapter(max_retries=3))
+    session.mount('https', HTTPAdapter(max_retries=3))
+
+    try:
+        response = session.get(assets_url, verify=False).json()
     
-    response = requests.get(request_url, auth=HTTPBasicAuth(PL_API_KEY, ''))
-    response = response.json()
+    except requests.exceptions.SSLError as exc:
+        # FIXME: Don't know why I'm getting these. Tried several options to mitigate, but it's too
+        # sporadic to diagnose right now.
+        logging.error('SSL error with request: {}'.format(assets_url))
+        logging.error('Suppressing error to avoid interrupting processing')
+        response = {}
 
     if not response:
-        logging.warn('No assets returned for item: {}'.format(item_id))
+        logging.warn('No assets returned for item: {}'.format(item['id']))
     else:
-        logging.info('{} assets available for item: {}'.format(len(response), item_id))
+        logging.info('{} assets available for item: {}'.format(len(response), item['id']))
 
     return response
 
@@ -318,8 +352,17 @@ def datastore_batch_upsert(document_list, entity_type, entity_ids):
         key = client.key(entity_type, entity_id)
         entity = datastore.Entity(key=key)
         entity.update(document)
+        entity_list.append(entity)
     
-    client.put_multi(entity_list)
+    with client.transaction() as xact:
+        client.put_multi(entity_list)
+        mutations = xact.mutations
+
+    # TODO: check all mutations are correct. Is that necessary?
+    logging.debug('Mutations: {}'.format(MessageToDict(mutations)))
+
+    return mutations
+
 
 
 # --------------------- File System ------------------- #
