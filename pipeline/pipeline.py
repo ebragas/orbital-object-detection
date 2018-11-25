@@ -29,13 +29,14 @@ if __name__ == "__main__":
     run_start = datetime.now()
 
     # ----- Planet API ----- #
+    
     filter_name = 'sf_bay'
     item_types = ['PSScene3Band']
     days = 1
     max_cloud_cover = 0.5
 
-
     # Get Planet Search endpoint stats
+    # TODO: improve search by filtering date > newest entity in DataStore
     stats_response = planet_stats_endpoint_request(item_types=item_types,
                                                    filter_name=filter_name,
                                                    days=days,
@@ -51,6 +52,7 @@ if __name__ == "__main__":
     
     logging.debug('Planet Search endpoint repsonse {}'.format(search_response))
     
+    # Check returned features
     feature_list = search_response.get('features', [])
     if not feature_list:
         logging.warn('No features were found for the defined search criteria!')
@@ -59,11 +61,22 @@ if __name__ == "__main__":
     
     # Get asset data
     for feature in feature_list:
-        feature['assets'] = planet_get_item_assets(item_id=feature['id'], item_type=item_types[0])
+        assets = planet_get_item_assets(item_id=feature['id'], item_type=item_types[0])
+        if not assets:
+            logging.warn('No assets returned for item: {}'.format(feature['id']))
+        else:
+            logging.info('{} assets available for item: {}'.format(feature['id']))
+
+        feature['assets'] = assets
 
 
     # ----- Loading to DataStore ----- #
 
+    # Upsert entity to DataStore
+    datastore_batch_upsert(feature_list, 'PlanetScenes', [feature['id'].pop() for feature in feature_list])
+
+
     run_end = datetime.now()
-    logging.info('\nPipeline completed:\t{}'.format(datetime.now()))
+    logging.info()
+    logging.info('Pipeline completed:\t{}'.format(datetime.now()))
     logging.info('Total runtime:\t{}'.format(run_end - run_start))

@@ -12,7 +12,7 @@ from itertools import repeat
 from datetime import datetime, timedelta
 import json
 
-PL_API_KEY = os.environ['PL_API_KEY']
+
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
     """Get a list of blob names for the given bucket, filter using the prefix.
@@ -159,6 +159,8 @@ def _over_quota():
     sys.exit(0)
 
 
+# ---------- Image Preprocessing ------------- #
+
 def _get_area(img, degree_rotation):
     '''Gets the area of an image that's been rotated the specified number
     of degrees, and extra transparent space cropped
@@ -178,6 +180,11 @@ def parallel_image_auto_rotate(image, processes=4):
     pool = multiprocessing.Pool(processes=processes)
     result = pool.starmap(_get_area, zip(repeat(img), range(45)))
     return np.argmin(result)
+
+
+# --------- Planet API Function  ------------- #
+
+PL_API_KEY = os.environ['PL_API_KEY']
 
 
 def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
@@ -266,6 +273,37 @@ def planet_get_item_assets(item_id, item_type):
     request_url = ('https://api.planet.com/data/v1/item-types/' +
         '{}/items/{}/assets/').format(item_type, item_id)
     
-    response = requests.get(request_url, auth=HTTPBasicAuth(PL_API_KEY))
+    response = requests.get(request_url, auth=HTTPBasicAuth(PL_API_KEY, ''))
 
     return response.json()
+
+
+# ----------- Google Cloud DateStore -------------- #
+
+PROJECT = 'reliable-realm-222318'
+
+
+def datastore_upsert(document, entity_type, entity_id):
+    '''Upserts an entity to the specified DataStore collection'''
+    
+    client = datastore.Client(project=PROJECT)
+    key = client.key(entity_type, entity_id)
+    entity = datastore.Entity(key=key)
+    
+    entity.update(document)
+    client.put(entity)
+
+
+def datastore_batch_upsert(document_list, entity_type, entity_ids):
+    '''Upserts an entity to the specified DataStore collection'''
+    
+    client = datastore.Client(project=PROJECT)
+    
+    entity_list = []
+    for entity_id, document in zip(entity_ids, document_list):
+        key = client.key(entity_type, entity_id)
+        entity = datastore.Entity(key=key)
+        entity.update(document)
+    
+    client.put_multi(entity_list)
+
