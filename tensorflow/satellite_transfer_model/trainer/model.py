@@ -15,8 +15,8 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 # TODO: replace with: tf.gfile.ListDirectory(os.path.join('/tmp/datasets/dogscats/', 'valid'))
 LIST_OF_LABELS = "no_ship,ship".split(",")
-HEIGHT = 224  # TODO: make dynamic when using hub module or basic cnn
-WIDTH = 224
+HEIGHT = 299  # TODO: make dynamic when using hub module or basic cnn
+WIDTH = 299
 NUM_CHANNELS = 3
 EVAL_INTERVAL = 30  # seconds
 
@@ -168,7 +168,14 @@ def transfer_model_fn(features, labels, mode, params):
 
     num_classes = len(params["label_vocab"])
     logit_units = 1 if num_classes == 2 else num_classes
-    logits = tf.layers.Dense(logit_units)(bottleneck_tensor)
+    
+    prelogits = tf.layers.Dense(bottleneck_tensor.shape[1])(bottleneck_tensor)
+    
+    # Additional layers
+    dense1 = tf.layers.dense(prelogits, params['dense1_nodes'], activation=tf.nn.relu)
+    dropout1 = tf.layers.dropout(dense1, rate=params['dropout_rate'], training=(mode == tf.estimator.ModeKeys.TRAIN))
+    logits = tf.layers.dense(dropout1, logit_units, activation=None)
+
 
     if num_classes == 2:
         head = tf.contrib.estimator.binary_classification_head(
@@ -179,11 +186,30 @@ def transfer_model_fn(features, labels, mode, params):
             n_classes=num_classes, label_vocabulary=params["label_vocab"]
         )
 
-    optimizer = tf.train.AdamOptimizer(learning_rate=params.get("learning_rate", 1e-3))
+    optimizer = tf.train.AdamOptimizer(learning_rate=params.get("learning_rate", params['learning_rate']))
 
     return head.create_estimator_spec(
         features, mode, logits, labels, optimizer=optimizer
     )
+
+
+def tuning_metric(labels, predictions):
+    '''Metric used by ML Engine to perform bayesian ____(TODO:?) hyper-parameter tuning.
+
+    Accepts: true labels and predicted labels.
+    Returns: a dictionary of key value pairs for the metric name and evaluated metric tensor
+        at each row.
+    '''
+    
+    # convert string true label to int
+    labels_table = tf.contrib.lookup.index_table_from_tensor(
+        tf.constant(LIST_OF_LABELS)
+    )
+    labels = labels_table.lookup(labels)
+    pred_values = predictions["classid"]
+
+    # TODO: Change to a softmax_cross_entropy_with_logits_v2 loss fn instead
+    return {"f1_score": tf.contrib.metrics.f1_score(labels, pred_values)}
 
 
 def train_and_evaluate(output_dir, hparams):
@@ -202,25 +228,24 @@ def train_and_evaluate(output_dir, hparams):
 
     # Hub module params
     # TODO: merge with hparams
-    params = {
-        "module_spec": "gs://reliable-realm-222318-mlengine/hub_modules/resnetv2/bf05a1aace97eed26e4164630cc681b144e9c38d/",
-        "module_name": "resnet_v2_50",
-        "learning_rate": 1e-3,
-        "train_module": False,  # Whether we want to finetune the module
-        "label_vocab": LIST_OF_LABELS,
-    }
+    # hparams['module_spec'] = "gs://reliable-realm-222318-mlengine/hub_modules/resnetv2/bf05a1aace97eed26e4164630cc681b144e9c38d/"  # ResNetV2
+    hparams["module_spec"] = "gs://reliable-realm-222318-mlengine/hub_modules/inceptionv3/35de6fa13b9f4a10e28e1c3c47d571b370c0d6c7/" # InceptionV3
+    hparams["module_name"] = "inceptionv3"
+    hparams["learning_rate"] = 1e-3
+    hparams["train_module"] = False  # Whether we want to finetune the module
+    hparams["label_vocab"] = LIST_OF_LABELS
 
     run_config = tf.estimator.RunConfig(save_checkpoints_secs=EVAL_INTERVAL)
 
     # TODO: merge
     estimator = tf.estimator.Estimator(
         model_fn=transfer_model_fn,
-        params=params,
+        params=hparams,
         config=run_config,
         model_dir=output_dir,
     )
 
-    # # Hyper-parameter tuning metrics used by ML Engine
+    # Hyper-parameter tuning metrics used by ML Engine
     # estimator = tf.contrib.estimator.add_metrics(estimator, tuning_metric)
 
     train_spec = tf.estimator.TrainSpec(
@@ -228,8 +253,7 @@ def train_and_evaluate(output_dir, hparams):
             hparams["train_data_path"],
             hparams["batch_size"],
             mode=tf.estimator.ModeKeys.TRAIN,
-            # augment=hparams["augment"], # TODO
-            augment=False,
+            augment=hparams["augment"],
         ),
         max_steps=hparams["train_steps"],
     )

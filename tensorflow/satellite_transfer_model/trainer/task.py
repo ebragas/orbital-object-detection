@@ -24,7 +24,7 @@ if __name__ == "__main__":
         "--learning_rate",
         help="Initial learning rate for training",
         type=float,
-        default=0.01,
+        default=0.1e-3,
     )
     parser.add_argument(
         "--train_steps",
@@ -71,22 +71,10 @@ if __name__ == "__main__":
 
     # optional hyperparameters used by cnn
     parser.add_argument(
-        "--ksize1", help="kernel size of first layer for CNN", type=int, default=5
+        "--dense1_nodes", help="Number of nodes in first dense layer", type=int, default=1001
     )
     parser.add_argument(
-        "--ksize2", help="kernel size of second layer for CNN", type=int, default=5
-    )
-    parser.add_argument(
-        "--nfil1", help="number of filters in first layer for CNN", type=int, default=20
-    )
-    parser.add_argument(
-        "--nfil2",
-        help="number of filters in second layer for CNN",
-        type=int,
-        default=10,
-    )
-    parser.add_argument(
-        "--dprob", help="dropout probability for CNN", type=float, default=0.25
+        "--dropout_rate", help="dropout probability for CNN", type=float, default=0.25
     )
     parser.add_argument(
         "--batch_norm",
