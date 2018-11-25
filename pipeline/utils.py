@@ -11,7 +11,7 @@ import multiprocessing
 from itertools import repeat
 from datetime import datetime, timedelta
 import json
-
+import pandas as pd
 
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
@@ -212,12 +212,15 @@ def planet_build_filter(filter_name='sf_bay', days=1, max_cloud_cover=0.5):
     }
 
     # filter for date range
+    # FIXME: hardcoded date filters
     date_range_filter = {
         'type': 'DateRangeFilter',
         'field_name': 'acquired',
         'config': {
-            'gte': '{}'.format((datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")),
-            'lte': '{}'.format(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+            # 'gte': '{}'.format((datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")),
+            # 'lte': '{}'.format(datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+            'gte': '2018-10-26T11:00:12Z',
+            'lte': '2018-11-01T11:00:12Z'
         }
     }
 
@@ -250,7 +253,12 @@ def planet_search_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_
                              auth=HTTPBasicAuth(PL_API_KEY, ''),
                              json=request_body)
 
-    return response.json()
+    # TODO: implement retry on non 200 response status
+
+    response = response.json()
+    logging.debug('Planet Search endpoint repsonse {}'.format(response))
+
+    return response
 
 
 def planet_stats_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_bay', days=1, max_cloud_cover=0.5):
@@ -261,7 +269,7 @@ def planet_stats_endpoint_request(item_types=['PSScene3Band'], filter_name='sf_b
         'filter': planet_build_filter(filter_name, days, max_cloud_cover)
     }
 
-    response = requests.post('https://api.planet.com/data/v1/stats',
+    response = requests.post('https://api.planet.com/data/v1/stats', # TODO: add retry on 500 errors (recursive?)
                              auth=HTTPBasicAuth(PL_API_KEY, ''),
                              json=request_body)
 
@@ -274,8 +282,14 @@ def planet_get_item_assets(item_id, item_type):
         '{}/items/{}/assets/').format(item_type, item_id)
     
     response = requests.get(request_url, auth=HTTPBasicAuth(PL_API_KEY, ''))
+    response = response.json()
 
-    return response.json()
+    if not response:
+        logging.warn('No assets returned for item: {}'.format(item_id))
+    else:
+        logging.info('{} assets available for item: {}'.format(len(response), item_id))
+
+    return response
 
 
 # ----------- Google Cloud DateStore -------------- #
@@ -306,4 +320,71 @@ def datastore_batch_upsert(document_list, entity_type, entity_ids):
         entity.update(document)
     
     client.put_multi(entity_list)
+
+
+# --------------------- File System ------------------- #
+
+def create_tmp_dir(directory_name='tmp'):
+    '''Create a tmp directory in the current location for caching API repsonses.
+    Return the directory path.
+    '''
+    script_dir = os.path.dirname(os.path.realpath(__file__))
+    tmp_dir = os.path.join(script_dir, 'tmp')
+
+    if not os.path.exists(tmp_dir):
+        os.mkdir(tmp_dir)
+
+    return tmp_dir
+
+
+def maybe_load_from_checkpoint(tmp_dir, file_name):
+    '''Checks if checkpoint file exists and loads if it does. Returns data type based on 
+    file_name extension. e.g. *.json returns dict
+    '''
+    file_path = os.path.join(tmp_dir, file_name)
+    checkpoint_exists = os.path.isfile(file_path)
+    data = None
+    
+    if not checkpoint_exists:
+        return data
+
+    elif checkpoint_exists and file_name.endswith('.json'):
+        with open(file_path) as fp:
+            data = json.load(fp)
+            logging.info('Loaded {} bytes from checkpoint: {}'.format(os.path.getsize(file_path), file_name))
+
+    elif checkpoint_exists and file_name.endswith('.csv'):
+        # FIXME: not used yet; check for headers, index, etc.
+        # data = pd.read_csv(file_path)
+        raise NotImplementedError
+
+    else:
+        raise ValueError("I don't know how to handle this file type yet!: {}".format(file_name.split('.')[-1]))
+
+    return data
+
+
+def write_to_checkpoint(tmp_dir, file_name, data):
+    '''Write checkpoint file, avoiding overwritting existing files and causing data loss
+    '''
+    file_path = os.path.join(tmp_dir, file_name)
+
+    # Check if file exists already to prevent overwritting and potential data loss
+    if os.path.isfile(file_path):
+        logging.error('File already exists! Raising error to avoid potential data loss!')
+        raise ValueError('Checkpoint file already exists: {}'.format(file_path))
+
+    elif file_name.endswith('.json'):
+        with open(file_path, 'w') as fp:
+            json.dump(data, fp)
+            logging.debug('{} bytes written to {}'.format(os.path.getsize(file_path), file_name))
+
+    elif file_name.endswith('.csv'):
+        # FIXME: use pandas to write csv with headers but no index
+        raise NotImplementedError
+
+    return
+
+
+
 

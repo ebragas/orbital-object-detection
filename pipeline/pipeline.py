@@ -17,6 +17,7 @@ from requests.auth import HTTPBasicAuth
 from datetime import datetime
 from utils import *
 from pprint import pprint
+from glob import glob
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -28,52 +29,72 @@ if __name__ == "__main__":
 
     run_start = datetime.now()
 
-    # ----- Planet API ----- #
-    
-    filter_name = 'sf_bay'
-    item_types = ['PSScene3Band']
-    days = 1
-    max_cloud_cover = 0.5
+    # ------------------------ Planet API ---------------------------- #
 
-    # Get Planet Search endpoint stats
-    # TODO: improve search by filtering date > newest entity in DataStore
-    stats_response = planet_stats_endpoint_request(item_types=item_types,
-                                                   filter_name=filter_name,
-                                                   days=days,
-                                                   max_cloud_cover=max_cloud_cover)
+    FILTER_NAME = 'sf_bay'
+    ITEM_TYPES = ['PSScene3Band']
+    DAYS = 1
+    MAX_CLOUD_COVER = 0.5
+
+    # Checkpoint dir
+    checkpoint_dir = create_tmp_dir(directory_name='tmp')
+
+
+    # Get search stats
+    stats_response = maybe_load_from_checkpoint(checkpoint_dir, 'stats_response.json')
+
+    if not stats_response: # TODO: improve search by filtering date > newest entity in DataStore
+        stats_response = planet_stats_endpoint_request(item_types=ITEM_TYPES,
+                                                    filter_name=FILTER_NAME,
+                                                    days=DAYS,
+                                                    max_cloud_cover=MAX_CLOUD_COVER)
+
+        write_to_checkpoint(checkpoint_dir, 'stats_response.json', stats_response)
 
     num_avail_scenes = sum([bucket['count'] for bucket in stats_response['buckets']])
 
-    # Search for scenes
-    search_response = planet_search_endpoint_request(item_types=item_types,
-                                                     filter_name=filter_name,
-                                                     days=days,
-                                                     max_cloud_cover=max_cloud_cover)
-    
-    logging.debug('Planet Search endpoint repsonse {}'.format(search_response))
-    
-    # Check returned features
+
+    # Get features with search endpoint
+    search_response = maybe_load_from_checkpoint(checkpoint_dir, 'search_response.json')
+
+    if not search_response:
+        search_response = planet_search_endpoint_request(item_types=ITEM_TYPES,
+                                                        filter_name=FILTER_NAME,
+                                                        days=DAYS,
+                                                        max_cloud_cover=MAX_CLOUD_COVER)
+        
+        write_to_checkpoint(checkpoint_dir, 'search_response.json', search_response)
+
+    # Check count of returned features
     feature_list = search_response.get('features', [])
     if not feature_list:
         logging.warn('No features were found for the defined search criteria!')
     elif len(feature_list) < num_avail_scenes:
         logging.warn("Additional features are available but were missed because paging isn't implemented yet!")
     
+
     # Get asset data
-    for feature in feature_list:
-        assets = planet_get_item_assets(item_id=feature['id'], item_type=item_types[0])
-        if not assets:
-            logging.warn('No assets returned for item: {}'.format(feature['id']))
-        else:
-            logging.info('{} assets available for item: {}'.format(feature['id']))
+    feature_assets = maybe_load_from_checkpoint(checkpoint_dir, 'feature_assets.json')
+    
+    if not feature_assets:
+        for feature in feature_list:
+            if not feature.get('assets', {}):
+                # TODO: make sure this is working as intended; wasn't returning anything before
+                assets = planet_get_item_assets(item_id=feature['id'], item_type=ITEM_TYPES[0])
+                feature['assets'] = assets
 
-        feature['assets'] = assets
+        # Cache features with assets
+        write_to_checkpoint(checkpoint_dir, 'feature_assets.json', feature_list)
 
 
-    # ----- Loading to DataStore ----- #
+
+    # ------------------------ Load to DataStore ---------------------------- #
+
+    ENT_KIND = 'PlanetScenes'
 
     # Upsert entity to DataStore
-    datastore_batch_upsert(feature_list, 'PlanetScenes', [feature['id'].pop() for feature in feature_list])
+    # TODO: add transactions
+    datastore_batch_upsert(feature_list, ENT_KIND, [feature['id'].pop() for feature in feature_list])
 
 
     run_end = datetime.now()
