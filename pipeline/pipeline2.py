@@ -6,6 +6,8 @@ from utils import *
 
 logging.basicConfig(level=logging.DEBUG)
 
+# TODO: Add logger to file
+
 PROJECT_NAME = 'reliable-realm-222318'
 BUCKET_NAME = 'reliable-realm-222318-vcm'
 MODEL_NAME = 'satellite'
