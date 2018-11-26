@@ -18,7 +18,7 @@ from time import sleep
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from planet import api # TODO: replace with requests
+# from planet import api # TODO: replace with requests
 from oauth2client.client import GoogleCredentials
 from io import BytesIO
 from googleapiclient import discovery
@@ -99,76 +99,76 @@ def cleanup(tmp_dir):
         os.remove(file_path)
 
 
-def get_planet_item(item_id, item_type):
+# def get_planet_item(item_id, item_type):
     
-    # create client with API Key from PL_API_KEY env. variable
-    client = api.ClientV1()
-    logging.debug('Planet API Key: {}'.format(client.auth.value))
+#     # create client with API Key from PL_API_KEY env. variable
+#     client = api.ClientV1()
+#     logging.debug('Planet API Key: {}'.format(client.auth.value))
 
-    try:
-        item = client.get_item(item_type, item_id).get()
+#     try:
+#         item = client.get_item(item_type, item_id).get()
 
-    except api.exceptions.OverQuota as e:
-        _over_quota()
+#     except api.exceptions.OverQuota as e:
+#         _over_quota()
     
-    except Exception as e:
-        logging.error(e)
-        logging.error('Skipping download, item_id {}'.format(item_id))
-        item = None
+#     except Exception as e:
+#         logging.error(e)
+#         logging.error('Skipping download, item_id {}'.format(item_id))
+#         item = None
 
-    return item
+#     return item
 
 
-def maybe_activate_asset(item, asset_type):
+# def maybe_activate_asset(item, asset_type):
     
-    # get assets for item
-    client = api.ClientV1()
-    logging.debug('Planet API Key: {}'.format(client.auth.value))
+#     # get assets for item
+#     client = api.ClientV1()
+#     logging.debug('Planet API Key: {}'.format(client.auth.value))
 
-    # activate asset
-    try:
-        assets = client.get_assets(item).get()
+#     # activate asset
+#     try:
+#         assets = client.get_assets(item).get()
 
-    except api.exceptions.OverQuota as e:
-        _over_quota()
+#     except api.exceptions.OverQuota as e:
+#         _over_quota()
         
-    except Exception as e:
-        logging.error(e)
-        return
+#     except Exception as e:
+#         logging.error(e)
+#         return
     
-    if assets.get(asset_type, {}).get('status', '') == 'active':
-        # do nothing
-        logging.info('{} asset type for item {} already active, ready to download'.format(asset_type.capitalize(), item['id']))
-        return
+#     if assets.get(asset_type, {}).get('status', '') == 'active':
+#         # do nothing
+#         logging.info('{} asset type for item {} already active, ready to download'.format(asset_type.capitalize(), item['id']))
+#         return
 
 
-    # NOTE: A response of 202 means that the request has been accepted and the
-    # activation will begin shortly. A 204 code indicates that the asset
-    # is already active and no further action is needed. A 401 code means
-    # the user does not have permissions to download this file.
+#     # NOTE: A response of 202 means that the request has been accepted and the
+#     # activation will begin shortly. A 204 code indicates that the asset
+#     # is already active and no further action is needed. A 401 code means
+#     # the user does not have permissions to download this file.
 
-    # activation request
-    try:
-        activation = client.activate(assets[asset_type])
+#     # activation request
+#     try:
+#         activation = client.activate(assets[asset_type])
 
-    except api.exceptions.OverQuota as e:
-        _over_quota()    
+#     except api.exceptions.OverQuota as e:
+#         _over_quota()    
 
-    except Exception as e:
-        logging.error(e)
-        return
+#     except Exception as e:
+#         logging.error(e)
+#         return
 
-    if activation.response.status_code == 202:
-        logging.info('Activation request for item_id {} and asset_type {} successful'.format(item['id'], asset_type))
+#     if activation.response.status_code == 202:
+#         logging.info('Activation request for item_id {} and asset_type {} successful'.format(item['id'], asset_type))
     
-    elif activation.response.status_code == 401:
-        logging.info('Asset item_id: {} asset_type: {} already activated'.format(item['id'], asset_type))
-        logging.debug('If you''re seeing this, thar be bugs!')
+#     elif activation.response.status_code == 401:
+#         logging.info('Asset item_id: {} asset_type: {} already activated'.format(item['id'], asset_type))
+#         logging.debug('If you''re seeing this, thar be bugs!')
 
-    else:
-        logging.debug('Unknown activation response status_code: {}'.format(activation.response.status_code))
+#     else:
+#         logging.debug('Unknown activation response status_code: {}'.format(activation.response.status_code))
 
-    return
+#     return
     
 
 def _over_quota():
