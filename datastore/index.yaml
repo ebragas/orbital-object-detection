@@ -1,0 +1,20 @@
+indexes:
+
+# General index
+- kind: PlanetScenes
+  ancestor: no
+  properties:
+  - name: links
+  - name: properties
+  - name: properties.acquired
+    direction: desc
+  - name: assets
+  - name: images
+
+# New image download queries
+- kind: PlanetScenes
+  properties:
+  - name: properties.acquired
+    direction: desc
+  - name: assets
+  - name: images
