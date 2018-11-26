@@ -18,7 +18,7 @@ from time import sleep
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
-from planet import api # TODO: replace with requests
+# from planet import api # TODO: replace with requests
 from oauth2client.client import GoogleCredentials
 from io import BytesIO
 from googleapiclient import discovery
@@ -305,8 +305,8 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
         request = ml.projects().predict(name=model_id, body=body)
         response = request.execute()
 
-        logging.debug('API Response:')
-        logging.debug(response)
+        # logging.debug('API Response:')
+        # logging.debug(response)
 
         # Handle response
         for prediction in response['predictions']:
@@ -320,7 +320,7 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
 
             total_count += 1
 
-        # sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
+        sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
 
     logging.info('Total images processed: {}'.format(total_count))
     logging.info('Total ships detected: {}'.format(ship_count))
