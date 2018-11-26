@@ -6,9 +6,6 @@ import sys
 import numpy as np
 import pandas as pd
 import requests
-from requests.adapters import HTTPAdapter
-from requests.auth import HTTPBasicAuth
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from datetime import datetime, timedelta
 from google.cloud import datastore
 from google.cloud import storage
@@ -16,6 +13,9 @@ from google.cloud.datastore.helpers import GeoPoint
 from google.protobuf.json_format import MessageToDict
 from itertools import repeat
 from time import sleep
+from requests.adapters import HTTPAdapter
+from requests.auth import HTTPBasicAuth
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from planet import api # TODO: replace with requests
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -73,6 +73,7 @@ def get_storage_ids(project, bucket_name, dir_prefix="/"):
 def upload_blob(bucket_name, source_file_name, destination_blob_name):
     """Uploads a file to the bucket.
     """
+    # TODO: Update references to `upload_blob_from_filename` and remove
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
@@ -166,7 +167,10 @@ def _over_quota():
     sys.exit(0)
 
 
-# ---------- Image Preprocessing ------------- #
+
+### Functions above this line need review and likely to be generalize ###
+
+# ------------------- Image Preprocessing ---------------------- #
 
 def _get_area(img, degree_rotation):
     '''Gets the area of an image that's been rotated the specified number
@@ -189,7 +193,7 @@ def parallel_image_auto_rotate(image, processes=4):
     return np.argmin(result)
 
 
-# ---------------- Planet API -------------------- #
+# ------------------------ Planet API ------------------------- #
 
 PL_API_KEY = os.environ['PL_API_KEY']
 

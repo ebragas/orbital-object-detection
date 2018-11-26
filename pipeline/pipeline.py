@@ -141,15 +141,21 @@ if __name__ == "__main__":
         datastore_batch_update_entities(entities)
 
 
-        # Download images until Quota exceeded
-        # TODO: Mark entities that need to retry download later
-        download_entities = [
-            entity for entity in entities if entity['assets'][ASSET_TYPE]['status'] == 'active']
+        # Check asset active and image doesn't already exist
+        download_entities = []
+        for entity in entities:  # TODO: Mark entities that need to retry download later
+
+            asset_active = entity['assets'][ASSET_TYPE]['status'] == 'active'
+            image_reqired = entity.get('images', {}).get(ASSET_TYPE, None)
+            
+            if asset_active and image_reqired:
+                download_entities.append(entity)
         
+
         image_file_paths = []
         for entity in download_entities:
             
-            # Check if file already downloaded
+            # Check if file checkpointed
             image_file_name = f'{ITEM_TYPES[0]}_{entity.key.id_or_name}_{ASSET_TYPE}.tiff'
             image_file_path = os.path.join(image_checkpoint_dir, image_file_name)
             
