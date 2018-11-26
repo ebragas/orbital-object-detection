@@ -6,15 +6,16 @@ from datetime import datetime
 from utils import *
 
 # ------------------------------ Setup logging ------------------------------ #
+dt = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
 if not os.path.isdir(log_dir):
     os.mkdir(log_dir)
 
-log_file = os.path.join(log_dir, 'pipeline2_{}.log'.format(datetime.now().strftime("%Y%m%d_%H%M%S")))
+# LOG_FILE = os.path.join(log_dir, 'pipeline2_{}.log'.format(dt))
+log_file = os.path.join(log_dir, 'pipeline2.log')
 
 logging.basicConfig(filename=log_file, level=logging.INFO)
-logging.info('Initializing log file: {}'.format(log_file))
-
 
 # ------------------------------ Settings ------------------------------ #
 

@@ -2,7 +2,7 @@ from PIL import Image, ImageDraw
 from io import BytesIO
 import json
 import logging
-import multiprocessing
+import multiprocessing as mp
 import os
 import sys
 import numpy as np
@@ -13,7 +13,7 @@ from google.cloud import datastore
 from google.cloud import storage
 from google.cloud.datastore.helpers import GeoPoint
 from google.protobuf.json_format import MessageToDict
-from itertools import repeat
+from itertools import repeat, chain, islice
 from time import sleep
 from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
@@ -23,6 +23,8 @@ from oauth2client.client import GoogleCredentials
 from io import BytesIO
 from googleapiclient import discovery
 import base64
+
+
 
 logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
 
@@ -98,78 +100,6 @@ def cleanup(tmp_dir):
         file_path = os.path.join(tmp_dir, file_name)
         os.remove(file_path)
 
-
-# def get_planet_item(item_id, item_type):
-    
-#     # create client with API Key from PL_API_KEY env. variable
-#     client = api.ClientV1()
-#     logging.debug('Planet API Key: {}'.format(client.auth.value))
-
-#     try:
-#         item = client.get_item(item_type, item_id).get()
-
-#     except api.exceptions.OverQuota as e:
-#         _over_quota()
-    
-#     except Exception as e:
-#         logging.error(e)
-#         logging.error('Skipping download, item_id {}'.format(item_id))
-#         item = None
-
-#     return item
-
-
-# def maybe_activate_asset(item, asset_type):
-    
-#     # get assets for item
-#     client = api.ClientV1()
-#     logging.debug('Planet API Key: {}'.format(client.auth.value))
-
-#     # activate asset
-#     try:
-#         assets = client.get_assets(item).get()
-
-#     except api.exceptions.OverQuota as e:
-#         _over_quota()
-        
-#     except Exception as e:
-#         logging.error(e)
-#         return
-    
-#     if assets.get(asset_type, {}).get('status', '') == 'active':
-#         # do nothing
-#         logging.info('{} asset type for item {} already active, ready to download'.format(asset_type.capitalize(), item['id']))
-#         return
-
-
-#     # NOTE: A response of 202 means that the request has been accepted and the
-#     # activation will begin shortly. A 204 code indicates that the asset
-#     # is already active and no further action is needed. A 401 code means
-#     # the user does not have permissions to download this file.
-
-#     # activation request
-#     try:
-#         activation = client.activate(assets[asset_type])
-
-#     except api.exceptions.OverQuota as e:
-#         _over_quota()    
-
-#     except Exception as e:
-#         logging.error(e)
-#         return
-
-#     if activation.response.status_code == 202:
-#         logging.info('Activation request for item_id {} and asset_type {} successful'.format(item['id'], asset_type))
-    
-#     elif activation.response.status_code == 401:
-#         logging.info('Asset item_id: {} asset_type: {} already activated'.format(item['id'], asset_type))
-#         logging.debug('If you''re seeing this, thar be bugs!')
-
-#     else:
-#         logging.debug('Unknown activation response status_code: {}'.format(activation.response.status_code))
-
-#     return
-    
 
 def _over_quota():
     logging.error('Stopping script execution as Planet API quota has been reached.')
@@ -273,66 +203,78 @@ def draw_bounding_boxes(image, predictions, threshold):
 # ------------------------ ML Engine API ------------------------- #
 
 LOG_INTERVAL = 100  # How many images to classify before logging status
+PROJECT_NAME = 'reliable-realm-222318'
+MODEL_NAME = 'satellite'
+
+def batch_generator(iterable, size=10):
+    iterator = iter(iterable)
+    for first in iterator:
+        yield chain([first], islice(iterator , size - 1))
+
+
+def classify_image(packet):
+
+    coord = packet['coord']
+    body = packet['body']
+    
+    # Setup clients
+    ml = discovery.build('ml', 'v1', cache_discovery=False)
+    model_id = 'projects/{}/models/{}'.format(PROJECT_NAME, MODEL_NAME)
+
+    request = ml.projects().predict(name=model_id, body=body)
+    response = request.execute()
+    
+    return coord, response
+
 
 def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
     '''...
     # TODO: implement multi-threading
     '''
 
-    # Setup clients
-    ml = discovery.build('ml', 'v1', cache_discovery=False)
-    model_id = 'projects/{}/models/{}'.format(project_name, model_name)
-
     total_bboxes = next(bbox_gen)
     predictions = {}
     ship_count = 0
     total_count = 0
+    cpus = mp.cpu_count() - 1
+    logging.info('Multiprocessing using {} CPUs'.format(cpus))
 
-    for coords in bbox_gen:
-        # Crop clip
-        clip = image.copy()
-        clip = clip.crop(coords)
+    for coord_batch in batch_generator(bbox_gen, size=cpus):
 
-        # Save to bytes
-        image_bytes = BytesIO()
-        clip.save(image_bytes, format='PNG')
+        # create batch of image chips
+        request_queue = []
+        for coord in coord_batch:
+            clip = image.crop(coord)
+            image_bytes = BytesIO()
+            clip.save(image_bytes, format='PNG')
 
-        # Build and execute request TODO: handle exceptions, retry, etc.
-        body = {
-            'instances': {
-                'image_bytes': {
-                    'b64': base64.b64encode(image_bytes.getvalue()).decode()
-                }
-            }
-        }
-        request = ml.projects().predict(name=model_id, body=body)
-        
-        response = request.execute()
+            # create batch of requests
+            body = {'instances': {'image_bytes': {'b64': base64.b64encode(image_bytes.getvalue()).decode()}}}
+            packet ={'coord': coord, 'body': body}
+            request_queue.append(packet)
 
-        if not response.get('predictions', {}):
-            logging.error(response)
-            logging.error('Skipping prediction')
-            continue
+        # multiprocess requests
+        logging.debug('Starting multiprocessing... {}'.format(datetime.now()))
 
-        # logging.debug('API Response:')
-        # logging.debug(response)
+        with mp.get_context("spawn").Pool(initializer=_mute) as pool:
+            response_queue = pool.map(classify_image, request_queue)
 
-        # Handle response
-        for prediction in response['predictions']:
-            if prediction['probabilities'][1] > threshold:
-            
-                logging.info('Ship detected at {} with {:.2f}% probability'.format(
-                    coords, prediction['probabilities'][1]))
-            
-                predictions[coords] = prediction
-                ship_count += 1
+        logging.debug('Multiprocessing done. {}'.format(datetime.now()))
 
-            total_count += 1
+        # handle responses
+        for coord, response in response_queue:
+            for prediction in response['predictions']:
+                if prediction['probabilities'][1] > threshold:
+                
+                    logging.info('Ship detected at {} with {:.2f}% probability'.format(
+                        coord, prediction['probabilities'][1]))
+                
+                    predictions[coord] = prediction
+                    ship_count += 1
 
-            if total_count % LOG_INTERVAL == 0:
-                logging.info('Processed image {} of {}'.format(total_count, total_bboxes))
+                total_count += 1
 
-        # sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
+        logging.info('Processed {} images of {}'.format(total_count, total_bboxes))
 
     logging.info('Total images processed: {}'.format(total_count))
     logging.info('Total ships detected: {}'.format(ship_count))
@@ -766,5 +708,6 @@ def write_to_checkpoint(tmp_dir, file_name, data):
 
     return
 
-
-
+def _mute():
+    '''Mute logging in child processes'''
+    sys.stdout = open(os.devnull, 'w')  
