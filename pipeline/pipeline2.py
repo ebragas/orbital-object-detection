@@ -51,8 +51,8 @@ if __name__ == "__main__":
 
     query = datastore_client.query(kind=ENTITY_KIND)
     # query.order = ['-properties.acquired'] # TODO: add when index working
-    query.add_filter(f'{ASSET_TYPE}_downloaded', '=', True)
-    query.add_filter(f'{ASSET_TYPE}_annotated', '=', False)
+    query.add_filter('{}_downloaded'.format(ASSET_TYPE), '=', True)
+    query.add_filter('{}_annotated'.format(ASSET_TYPE), '=', False)
     
     result = query.fetch(limit=LIMIT)
 
@@ -63,16 +63,16 @@ if __name__ == "__main__":
 
         # Download image locally
         entity_id = entity.key.id_or_name
-        file_name = f'{ITEM_TYPE}_{entity_id}_{ASSET_TYPE}.tiff' # TODO: use a function for this to enforce consistency
+        file_name = '{}_{}_{}.tiff'.format(ITEM_TYPE, entity_id, ASSET_TYPE) # TODO: use a function for this to enforce consistency
         gs_path = os.path.join(INPUT_DIR, file_name)
         local_path = os.path.join(image_checkpoint_dir, file_name)
 
         if not os.path.exists(local_path):
-            logging.info(f'Downloading image from Cloud Storage location: gs://{BUCKET_NAME}/{gs_path}')
+            logging.info('Downloading image from Cloud Storage location: gs://{}/{}'.format(BUCKET_NAME, gs_path))
             blob = get_storage_blob(project=PROJECT, bucket_name=BUCKET_NAME, blob_name=gs_path)
             image = download_image_blob(blob)
         else:
-            logging.info(f'Reading image from local checkpoint: {local_path}')
+            logging.info('Reading image from local checkpoint: {}'.format(local_path))
             image = Image.open(local_path)
 
         # Auto-rotate image horizontally
@@ -89,7 +89,7 @@ if __name__ == "__main__":
         # image.show()
 
         # Perform object detection
-        predictions = maybe_load_from_checkpoint(checkpoint_dir, f'predictions_{entity_id}.json')
+        predictions = maybe_load_from_checkpoint(checkpoint_dir, 'predictions_{}.json'.format(entity_id))
 
         if not predictions:
             bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
@@ -101,7 +101,7 @@ if __name__ == "__main__":
                                                 threshold=SAVE_THRESHOLD)
         
             # TODO: cache predictions to tmp at chip level
-            write_to_checkpoint(checkpoint_dir, f'predictions_{entity_id}.json', predictions)
+            write_to_checkpoint(checkpoint_dir, 'predictions_{}.json'.format(entity_id), predictions)
 
         else:
             logging.info('Loading predictions from checkpoint')
@@ -112,7 +112,7 @@ if __name__ == "__main__":
                                               threshold=DRAW_THRESHOLD)
 
         today = datetime.today().strftime('%Y%m%d_%H%M%S')
-        annotated_name = file_name[:file_name.find('.')] + f'_annotated_{today}.tiff'
+        annotated_name = file_name[:file_name.find('.')] + '_annotated_{}.tiff'.format(today)
         
         # Upload annotated image to Cloud Storage
         upload_image_blob(project=PROJECT_NAME,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
                           format='PNG')
 
         # Update Entity in DataStore
-        entity[f'{ASSET_TYPE}_annotated'] = True
+        entity['{}_annotated'.format(ASSET_TYPE)] = True
         entity['predictions'] = predictions
         entity['annotated_image_name'] = annotated_name
         datastore_batch_update_entities([entity])

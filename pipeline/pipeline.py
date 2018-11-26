@@ -150,7 +150,7 @@ if __name__ == "__main__":
         for entity in download_entities:
             
             # Check if file checkpointed
-            image_file_name = f'{ITEM_TYPES[0]}_{entity.key.id_or_name}_{ASSET_TYPE}.tiff'
+            image_file_name = '{}_{}_{}.tiff'.format(ITEM_TYPES[0], entity.key.id_or_name, ASSET_TYPE)
             image_file_path = os.path.join(image_checkpoint_dir, image_file_name)
             
             if not os.path.exists(image_file_path):
@@ -173,8 +173,8 @@ if __name__ == "__main__":
             upload_blob_from_filename(BUCKET_NAME, file_path, blob_name)
 
             # Update Entity
-            entity[f'{ASSET_TYPE}_downloaded'] = True
-            entity[f'{ASSET_TYPE}_annotated'] = entity.get(f'{ASSET_TYPE}_annotated', False)
+            entity['{}_downloaded'.format(ASSET_TYPE)] = True
+            entity['{}_annotated'.format(ASSET_TYPE)] = entity.get('{}_annotated'.format(ASSET_TYPE), False)
             datastore_batch_update_entities([entity])
 
             
