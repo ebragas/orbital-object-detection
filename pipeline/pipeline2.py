@@ -2,11 +2,21 @@
 import os
 import logging
 from google.cloud import datastore
+from datetime import datetime
 from utils import *
 
-logging.basicConfig(level=logging.DEBUG)
+# ------------------------------ Setup logging ------------------------------ #
+log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
+if not os.path.isdir(log_dir):
+    os.mkdir(log_dir)
 
-# TODO: Add logger to file
+log_file = os.path.join(log_dir, 'pipeline2_{}.log'.format(datetime.now().strftime("%Y%m%d_%H%M%S")))
+
+logging.basicConfig(filename=log_file, level=logging.INFO)
+logging.info('Initializing log file: {}'.format(log_file))
+
+
+# ------------------------------ Settings ------------------------------ #
 
 PROJECT_NAME = 'reliable-realm-222318'
 BUCKET_NAME = 'reliable-realm-222318-vcm'
@@ -35,6 +45,7 @@ DRAW_THRESHOLD = 0.9
 if __name__ == "__main__":
 
     run_start = datetime.now()
+    logging.info('Start time: {}'.format(run_start))
 
     ENTITY_KIND = 'PlanetScenes'
     LIMIT = 10

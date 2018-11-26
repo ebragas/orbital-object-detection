@@ -24,6 +24,7 @@ from io import BytesIO
 from googleapiclient import discovery
 import base64
 
+logging.getLogger('googleapiclient.discovery').setLevel(logging.WARNING)
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -271,6 +272,8 @@ def draw_bounding_boxes(image, predictions, threshold):
 
 # ------------------------ ML Engine API ------------------------- #
 
+LOG_INTERVAL = 100  # How many images to classify before logging status
+
 def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
     '''...
     # TODO: implement multi-threading
@@ -325,6 +328,9 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
                 ship_count += 1
 
             total_count += 1
+
+            if total_count % LOG_INTERVAL == 0:
+                logging.info('Processed image {} of {}'.format(total_count, total_bboxes))
 
         # sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
 
