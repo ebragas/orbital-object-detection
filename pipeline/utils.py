@@ -15,6 +15,7 @@ from google.cloud import storage
 from google.cloud.datastore.helpers import GeoPoint
 from google.protobuf.json_format import MessageToDict
 from itertools import repeat
+from time import sleep
 from planet import api # TODO: replace with requests
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -188,7 +189,7 @@ def parallel_image_auto_rotate(image, processes=4):
     return np.argmin(result)
 
 
-# --------- Planet API Function  ------------- #
+# ---------------- Planet API -------------------- #
 
 PL_API_KEY = os.environ['PL_API_KEY']
 
@@ -319,21 +320,97 @@ def planet_get_item_assets(item, item_type):
         logging.error('Suppressing error to avoid interrupting processing')
         response = {}
 
-    if not response:
-        logging.warn('No assets returned for item: {}'.format(item['id']))
-    else:
-        logging.info('{} assets available for item: {}'.format(len(response), item['id']))
+    # FIXME: make this compatible with both JSON and Entities
+    # if not response:
+    #     logging.warn('No assets returned for item: {}'.format(item['id']))
+    # else:
+    #     logging.info('{} assets available for item: {}'.format(len(response), item['id']))
 
     return response
 
 
-# ----------- Google Cloud DateStore -------------- #
+def planet_activate_asset(item, asset_type):
+    '''Send activation request to the provided URL'''
+
+    # Check status
+    if item['assets'][asset_type]['status'] in ['active', 'activating']:
+        logging.info('Asset active and ready to download') # TODO: Add ID somehow
+        return
+    
+    session = requests.Session()
+    session.auth = (PL_API_KEY, '')
+
+    # Activate
+    activation_url = item['assets'][asset_type]['_links']['activate']
+    response = session.post(activation_url)
+    
+    # Add response to item
+    if response.status_code == 202:
+        item['assets'][asset_type]['status'] = 'activating'
+        logging.info('Activation request successful')
+
+    logging.debug('Activation response code: {}'.format(response.status_code))
+    logging.debug('Activation response: {}'.format(response.content))
+
+    return item
+
+
+def planet_download_asset(item, asset_type, tmp_dir, file_name):
+    
+    file_path = os.path.join(tmp_dir, file_name)
+    session = requests.Session()
+    session.auth = (PL_API_KEY, '')
+
+    # Check if active
+    if item['assets'][asset_type]['status'] == 'active':
+        asset_url = item['assets'][asset_type]['location']
+    else:
+        logging.warn('Asset not active yet, skipping download')
+        return
+
+    # Download
+    retry = True
+    while retry:
+        try:
+            response = session.get(asset_url, stream=True, allow_redirects=True)
+
+            # if response.status_code == 400:
+            if not response.ok:
+                if response.status_code == 400:
+                    logging.info('Download token expired. Refreshing and trying again.')
+                    item['assets'] = planet_get_item_assets(item, item['properties']['item_type'])
+                    asset_url = item['assets'][asset_type]['location']
+                else:
+                    raise ValueError('Some kinda error, more of a placeholder really')
+            else:
+                retry = False
+        
+        except Exception as e:
+            # TODO: Handle QuotaExceeded
+            raise
+    
+    if response.status_code == 200:
+        logging.info('Request successful. Downloading file...')
+        
+        with open(file_path, "wb") as fp:
+            for chunk in response.iter_content(chunk_size=512):
+                if chunk:  # filter out keep-alive new chunks
+                    fp.write(chunk)
+
+        logging.info('{} downloaded successfull!'.format(file_name))
+
+        return file_path
+        
+
+# --------------------- Google Cloud DateStore ------------------- #
 
 PROJECT = 'reliable-realm-222318'
 
 
 def datastore_upsert(document, entity_type, entity_id):
-    '''Upserts an entity to the specified DataStore collection'''
+    '''Upserts an entity to the specified DataStore collection
+    # TODO: wrap in transaction
+    '''
     
     client = datastore.Client(project=PROJECT)
     key = client.key(entity_type, entity_id)
@@ -343,7 +420,7 @@ def datastore_upsert(document, entity_type, entity_id):
     client.put(entity)
 
 
-def datastore_batch_upsert(document_list, entity_type, entity_ids):
+def datastore_batch_upsert_from_json(document_list, entity_type, entity_ids):
     '''Upserts an entity to the specified DataStore collection'''
     
     client = datastore.Client(project=PROJECT)
@@ -369,6 +446,31 @@ def datastore_batch_upsert(document_list, entity_type, entity_ids):
     return mutations
 
 
+def datastore_batch_get(entity_kind, entity_names, max_retries=3, wait_secs=30, wait_for_deferred=True):
+    '''Kind specifies the collection. Entity names are the values that were used
+    to create the unique key
+    
+    # TODO: add retry count or wait time limit
+    '''
+    
+    client = datastore.Client(project=PROJECT)
+    keys = [client.key(kind, name) for kind, name in zip(repeat(entity_kind), entity_names)]
+    
+    retry = True
+    retries = 0
+    
+    while retry and retries < max_retries:
+        deff_entities = []
+        entities = client.get_multi(keys, deferred=deff_entities)
+        
+        if not deff_entities or not wait_for_deferred:
+            retry = False
+        else:
+            sleep(wait_secs)
+
+    return entities
+
+
 def convert_coord_list_to_geopoints(coordinate_list):
     '''Convert list of coordinate lists like those returned by Planet API for feature geometries
     to GeoPoints objects usable by DataStore
@@ -379,14 +481,40 @@ def convert_coord_list_to_geopoints(coordinate_list):
 
     return geopoints
 
-# --------------------- File System ------------------- #
+
+def datastore_batch_update_entities(entities):
+
+    client = datastore.Client(project=PROJECT)
+
+    with client.transaction():
+        client.put_multi(entities)
+
+
+# ------------------------ Cloud Storage ------------------------- #
+
+def upload_blob_from_filename(bucket_name, source_file_name, destination_blob_name):
+    """Uploads a file to the bucket location
+    """
+    # NOTE: What happens if this file already exists?
+
+    storage_client = storage.Client()
+    bucket = storage_client.get_bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+
+    blob.upload_from_filename(source_file_name)
+    logging.info('File {} uploaded to {}.'.format(os.path.basename(source_file_name), destination_blob_name))
+    
+    return
+
+
+# -------------------------- File System --------------------------- #
 
 def create_tmp_dir(directory_name='tmp'):
     '''Create a tmp directory in the current location for caching API repsonses.
     Return the directory path.
     '''
     script_dir = os.path.dirname(os.path.realpath(__file__))
-    tmp_dir = os.path.join(script_dir, 'tmp')
+    tmp_dir = os.path.join(script_dir, directory_name)
 
     if not os.path.exists(tmp_dir):
         os.mkdir(tmp_dir)
@@ -441,7 +569,6 @@ def write_to_checkpoint(tmp_dir, file_name, data):
         raise NotImplementedError
 
     return
-
 
 
 
