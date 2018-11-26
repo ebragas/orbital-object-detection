@@ -5,6 +5,7 @@
 *.local
 *.gz
 *.tif
+*.tiff
 MNIST-data/
 data/
 
