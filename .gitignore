@@ -15,6 +15,7 @@ image-retraining/tf_files/bottlenecks/
 # TensorFlow checkpoints
 */checkpoint/*
 */checkpoints/
+*/satellite_model/backups/*
 
 # VS Code
 .vscode/
