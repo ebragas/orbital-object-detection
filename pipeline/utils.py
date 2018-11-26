@@ -1,3 +1,5 @@
+from PIL import Image, ImageDraw
+from io import BytesIO
 import json
 import logging
 import multiprocessing
@@ -17,9 +19,15 @@ from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from planet import api # TODO: replace with requests
+from oauth2client.client import GoogleCredentials
+from io import BytesIO
+from googleapiclient import discovery
+import base64
+
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
+# TODO: Break these up into subdirectories
 
 def get_blob_names(project, bucket_name, dir_prefix="/"):
     """Get a list of blob names for the given bucket, filter using the prefix.
@@ -181,16 +189,143 @@ def _get_area(img, degree_rotation):
     return np.prod(img.size)
 
 
-def parallel_image_auto_rotate(image, processes=4):
+def auto_rotate(image):
+    '''Seriously, could I use gradient descent instead?
+    '''
+    img = image.copy()
+    area_arr = np.zeros(45)
+
+    logging.info('Searching for optimal image rotation...')
+    for i in range(45):
+        area_arr[i] = _get_area(img, i)
+
+    optimal = np.argmin(area_arr)
+    logging.info('Optimal rotation degrees: {}'.format(optimal))
+    return rotate_crop_image(img, optimal)
+        
+
+def parallel_auto_rotate(image, processes=-1):
     '''Iterates over 45 degree range in parallel to find the degree rotation
     of an image that gives the least area
     
     Used to correct rotated images buffered by transparent pixels on sides.
+    
+    # TODO: make this work or find a better algorithm
     '''
+    if processes < 1:
+        processes = multiprocessing.cpu_count()
+
     img = image.copy()
     pool = multiprocessing.Pool(processes=processes)
     result = pool.starmap(_get_area, zip(repeat(img), range(45)))
-    return np.argmin(result)
+    deg = np.argmin(result)
+
+    return rotate_crop_image(img, deg)
+
+
+def rotate_crop_image(image, degrees):
+    '''Returns the rotated image after cropping. Uses expand=True to avoid losing edges
+    '''
+    im = image.copy()
+    im = im.rotate(degrees, expand=True)
+    im = im.crop(im.getbbox())
+    return im
+
+
+def gen_bounding_box_coords(image, clip_height, clip_width, step_size):
+    '''Returns generator that first yields the total number of bounding boxes given the
+    size and step sizes, then returns the bounding box coordinates.
+    '''
+    coords = []
+
+    # Get original img size
+    img_height, img_width = image.size
+
+    num_high = (img_height - (clip_height - step_size)) // step_size
+    num_wide = (img_width - (clip_width - step_size)) // step_size
+
+    yield num_high * num_wide
+
+    for i in range(num_high):
+        upper = step_size * i
+        lower = upper + clip_height
+
+        for j in range(num_wide):
+            left = j * step_size
+            right = left + clip_width
+
+            yield (left, upper, right, lower)
+
+
+def draw_bounding_boxes(image, predictions, threshold):
+    '''doc'''
+    annotated = image.copy()
+    draw = ImageDraw.Draw(annotated)
+
+    for coord, pred in predictions.items():
+        if pred['probabilities'][1] > threshold:
+            draw.rectangle(coord, outline='red', width=3)
+
+    return annotated
+
+
+# ------------------------ ML Engine API ------------------------- #
+
+def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
+    '''...
+    # TODO: implement multi-threading
+    '''
+
+    # Setup clients
+    ml = discovery.build('ml', 'v1', cache_discovery=False)
+    model_id = 'projects/{}/models/{}'.format(project_name, model_name)
+
+    total_bboxes = next(bbox_gen)
+    predictions = {}
+    ship_count = 0
+    total_count = 0
+
+    for coords in bbox_gen:
+        # Crop clip
+        clip = image.copy()
+        clip = clip.crop(coords)
+
+        # Save to bytes
+        image_bytes = BytesIO()
+        clip.save(image_bytes, format='PNG')
+
+        # Build and execute request TODO: handle exceptions, retry, etc.
+        body = {
+            'instances': {
+                'image_bytes': {
+                    'b64': base64.b64encode(image_bytes.getvalue()).decode()
+                }
+            }
+        }
+        request = ml.projects().predict(name=model_id, body=body)
+        response = request.execute()
+
+        logging.debug('API Response:')
+        logging.debug(response)
+
+        # Handle response
+        for prediction in response['predictions']:
+            if prediction['probabilities'][1] > threshold:
+            
+                logging.info('Ship detected at {} with {:.2f}% probability'.format(
+                    coords, prediction['probabilities'][1]))
+            
+                predictions[coords] = prediction
+                ship_count += 1
+
+            total_count += 1
+
+        # sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
+
+    logging.info('Total images processed: {}'.format(total_count))
+    logging.info('Total ships detected: {}'.format(ship_count))
+
+    return predictions
 
 
 # ------------------------ Planet API ------------------------- #
@@ -490,7 +625,7 @@ def datastore_batch_update_entities(entities):
 
     client = datastore.Client(project=PROJECT)
 
-    with client.transaction():
+    with client.transaction() as xact:
         client.put_multi(entities)
 
 
@@ -509,6 +644,51 @@ def upload_blob_from_filename(bucket_name, source_file_name, destination_blob_na
     logging.info('File {} uploaded to {}.'.format(os.path.basename(source_file_name), destination_blob_name))
     
     return
+
+
+def get_storage_blobs(project, bucket_name, dir_prefix):
+    '''Return list of blob objects from the specified location
+    '''
+    client = storage.Client(project=project)
+    bucket = client.get_bucket(bucket_name=bucket_name)
+    blobs = list(bucket.list_blobs(prefix=dir_prefix))
+    return blobs
+
+
+def get_storage_blob(project, bucket_name, blob_name):
+    '''Return a single blob by name
+    '''
+    client = storage.Client(project=project)
+    bucket = client.get_bucket(bucket_name=bucket_name)
+    blob = bucket.blob(blob_name)
+    return blob
+
+
+def download_image_blob(blob):
+    '''Downloads the specified blob and returns as a PIL image object
+    '''
+
+    byte_string = blob.download_as_string()
+    image_bytes = BytesIO(byte_string)
+    image = Image.open(image_bytes)
+    return image
+
+
+def upload_image_blob(project, bucket_name, dir_prefix, blob_name, image, content_type, format='PNG'):
+    '''Uploads a blob to the specified location from a file object. This allows uploading of
+    BytesIO objects, Images, etc., without the need to first write to disk.
+
+    # TODO: consider handling client in main
+    '''
+    client = storage.Client(project=project)
+    bucket = client.get_bucket(bucket_name=bucket_name)
+    
+    blob = bucket.blob(blob_name)
+    image_bytes = BytesIO()
+    image.save(image_bytes, format=format)
+
+    blob.upload_from_string(image_bytes.getvalue(), content_type=content_type)
+    logging.info('Uploaded file {} to gs://{}/{}'.format(blob.name, bucket_name, dir_prefix))
 
 
 # -------------------------- File System --------------------------- #

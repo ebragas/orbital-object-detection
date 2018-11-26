@@ -17,4 +17,13 @@ indexes:
   - name: properties.acquired
     direction: desc
   - name: assets
-  - name: images
+  - name: visual_downloaded
+  - name: visual_annotated
+
+- kind: PlanetScenes
+  properties:
+  - name: properties.acquired
+    direction: desc
+  - name: visual_downloaded
+  - name: visual_annotated
+  - name: annotated_image_name

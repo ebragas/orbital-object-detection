@@ -24,12 +24,6 @@ from google.cloud.datastore.helpers import GeoPoint
 logging.basicConfig(level=logging.DEBUG)
 
 
-# Planet search filters
-logging.info('Loaded planet filters')
-
-# TODO: Try wrapping each section in try/except blocks. Would be cool to be able to skip whole
-#       sections or handle errors that shouldn't halt whole pipeline execution.
-
 if __name__ == "__main__":
 
     run_start = datetime.now()
@@ -146,9 +140,9 @@ if __name__ == "__main__":
         for entity in entities:  # TODO: Mark entities that need to retry download later
 
             asset_active = entity['assets'][ASSET_TYPE]['status'] == 'active'
-            image_reqired = entity.get('images', {}).get(ASSET_TYPE, None)
+            image_exists = entity.get('images', {}).get(ASSET_TYPE, None)
             
-            if asset_active and image_reqired:
+            if asset_active and not image_exists:
                 download_entities.append(entity)
         
 
@@ -179,8 +173,8 @@ if __name__ == "__main__":
             upload_blob_from_filename(BUCKET_NAME, file_path, blob_name)
 
             # Update Entity
-            entity['images'] = entity.get('images', [])
-            entity['images'].append({ASSET_TYPE: f'gs://{blob_name}'})
+            entity[f'{ASSET_TYPE}_downloaded'] = True
+            entity[f'{ASSET_TYPE}_annotated'] = entity.get(f'{ASSET_TYPE}_annotated', False)
             datastore_batch_update_entities([entity])
 
             
