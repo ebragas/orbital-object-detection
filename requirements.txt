@@ -7,3 +7,5 @@ requests==2.13.0
 tensorboard==1.12.0
 tensorflow==1.12.0
 tensorflow-hub==0.1.1
+requests==2.20.1
+libtiff==0.4.2
