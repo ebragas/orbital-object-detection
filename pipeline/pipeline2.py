@@ -102,9 +102,9 @@ if __name__ == "__main__":
             
             # NOTE: DEV ONLY --> image.save(os.path.join(image_checkpoint_dir, 'sneak_peak.png'), format='PNG')
 
-            # NOTE: DEV ONLY -- artificially reduce image size
-            logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
-            image = image.crop((1400, 1300, 1900, 1800))
+            # # NOTE: DEV ONLY -- artificially reduce image size
+            # logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
+            # image = image.crop((1400, 1300, 1900, 1800))
             # image.show()
 
             bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)

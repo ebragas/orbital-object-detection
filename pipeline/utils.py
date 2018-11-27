@@ -1,3 +1,4 @@
+from ast import literal_eval as make_tuple
 from PIL import Image, ImageDraw
 from io import BytesIO
 import json
@@ -145,10 +146,10 @@ def parallel_auto_rotate(image, processes=-1):
     # TODO: make this work or find a better algorithm
     '''
     if processes < 1:
-        processes = multiprocessing.cpu_count()
+        processes = mp.cpu_count()
 
     img = image.copy()
-    pool = multiprocessing.Pool(processes=processes)
+    pool = mp.Pool(processes=processes)
     result = pool.starmap(_get_area, zip(repeat(img), range(45)))
     deg = np.argmin(result)
 
@@ -196,7 +197,7 @@ def draw_bounding_boxes(image, predictions, threshold):
 
     for coord, pred in predictions.items():
         if pred['probabilities'][1] > threshold:
-            draw.rectangle(coord, outline='red', width=3)
+            draw.rectangle(make_tuple(coord), outline='red', width=3)
 
     return annotated
 
@@ -292,14 +293,11 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
             with mp.get_context("spawn").Pool(initializer=_mute) as pool:
                 response_queue = pool.map(classify_image, request_queue)
 
-        except HttpError as e: # Ignore server errors and continue processing
+        except (HttpError, requests.exceptions.SSLError) as e: # Ignore server errors and continue processing
             logging.exception(e)
-            if e.resp.status in [500, 503, 403]:
-                logging.warn('Ignoring exception and continueing processing')
-                sleep(5)
-                continue
-            else:
-                raise
+            logging.warn('Ignoring exception and continueing processing')
+            sleep(5)
+            continue
 
 
         logging.debug('Multiprocessing done. {}'.format(datetime.now()))
@@ -325,8 +323,8 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
         
         logging.info('Processed {} images of {}'.format(total_count, total_bboxes))
 
-    logging.info('Total images processed: {}'.format(total_count))
-    logging.info('Total ships detected: {}'.format(ship_count))
+    logging.info('Total images processed: {}'.format(predictions.pop('total_count')))
+    logging.info('Total ships detected: {}'.format(predictions.pop('ship_count')))
 
     os.rename(src=os.path.join(tmp_dir, ckpt_file_name), dst=os.path.join(tmp_dir, 'prediction_cache_complete{}.json'.format(datetime.now())))
 
