@@ -130,9 +130,9 @@ def auto_rotate(image):
 
     logging.info('Searching for optimal image rotation...')
     for i in range(45):
-        area_arr[i] = _get_area(img, i)
+        area_arr[i] = _get_area(img, -i)
 
-    optimal = np.argmin(area_arr)
+    optimal = -np.argmin(area_arr)
     logging.info('Optimal rotation degrees: {}'.format(optimal))
     return rotate_crop_image(img, optimal)
         
@@ -370,7 +370,7 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
         # handle responses
         for coord, response in response_queue:
             for prediction in response['predictions']:
-                if prediction['probabilities'][1] > threshold:
+                if prediction['class'] > 'ship':
                 
                     logging.info('Ship detected at {} with {:.2f}% probability'.format(
                         coord, prediction['probabilities'][1]))

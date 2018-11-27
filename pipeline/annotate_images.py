@@ -1,217 +1,133 @@
-import sys
+
 import os
 import logging
-import base64
-from PIL import Image, ImageDraw
-from oauth2client.client import GoogleCredentials
-from io import BytesIO
-from googleapiclient import discovery
-from google.cloud import storage
+from google.cloud import datastore
 from datetime import datetime
+from utils import *
 
-logging.basicConfig(level=logging.DEBUG)
+# ------------------------------ Setup logging ------------------------------ #
+"""
+dt = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+log_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'logs')
+if not os.path.isdir(log_dir):
+    os.mkdir(log_dir)
+
+log_file = os.path.join(log_dir, 'pipeline2.log')
+
+# logging.basicConfig(filename=log_file, level=logging.INFO)
+"""
+logging.basicConfig(level=logging.INFO)
+
+# ------------------------------ Settings ------------------------------ #
 
 PROJECT_NAME = 'reliable-realm-222318'
 BUCKET_NAME = 'reliable-realm-222318-vcm'
 MODEL_NAME = 'satellite'
-
-INPUT_DIR = 'pipeline/scenes/raw/'
+INPUT_DIR = 'pipeline/full/'
 OUTPUT_DIR = os.path.join('pipeline/scenes/annotated/', MODEL_NAME)
 
-SAVE_THRESHOLD = 0.2
-DRAW_THRESHOLD = 0.9
 
 # Clip sizes
 HEIGHT, WIDTH, STEP = 80, 80, 10
 
+# Prediction thresholds
+SAVE_THRESHOLD = 0.2
+DRAW_THRESHOLD = 0.9
 
-def get_storage_blobs(project, bucket_name, dir_prefix):
-    '''Return list of blob objects from the specified location
-    '''
+if __name__ == "__main__":
 
-    client = storage.Client(project=project)
-    bucket = client.get_bucket(bucket_name=bucket_name)
-    blobs = list(bucket.list_blobs(prefix=dir_prefix))
-    return blobs
+    try:
+        run_start = datetime.now()
+        logging.info('Start time: {}'.format(run_start))
 
+        ENTITY_KIND = 'PlanetScenes'
+        LIMIT = 10
+        ASSET_TYPE = 'visual'
+        ITEM_TYPE = 'PSScene3Band'
 
-def download_image_blob(blob):
-    '''Downloads the specified blob and returns as a PIL image object
-    '''
-
-    byte_string = blob.download_as_string()
-    image_bytes = BytesIO(byte_string)
-    image = Image.open(image_bytes)
-    return image
-
-
-def gen_bounding_box_coords(image, clip_height, clip_width, step_size):
-    '''Returns generator that first yields the total number of bounding boxes given the
-    size and step sizes, then returns the bounding box coordinates.
-    '''
-    coords = []
-
-    # Get original img size
-    img_height, img_width = image.size
-
-    num_high = (img_height - (clip_height - step_size)) // step_size
-    num_wide = (img_width - (clip_width - step_size)) // step_size
-
-    yield num_high * num_wide
-
-    for i in range(num_high):
-        upper = step_size * i
-        lower = upper + clip_height
-
-        for j in range(num_wide):
-            left = j * step_size
-            right = left + clip_width
-
-            yield (left, upper, right, lower)
-
-
-def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
-    '''...
-    # TODO: implement multi-threading
-    '''
-
-    # Setup clients
-    ml = discovery.build('ml', 'v1', cache_discovery=False)
-    model_id = 'projects/{}/models/{}'.format(project_name, model_name)
-
-    total_bboxes = next(bounding_boxes)
-    predictions = {}
-    ship_count = 0
-    total_count = 0
-
-    for coords in bbox_gen:
-        # crop clip
-        clip = image.copy()
-        clip = clip.crop(coords)
-
-        # save to bytes
-        image_bytes = BytesIO()
-        clip.save(image_bytes, format='PNG')
-
-        # build and execute request
-        # TODO: handle exceptions, retry, etc.
-        body = {
-            'instances': {
-                'image_bytes': {
-                    'b64': base64.b64encode(image_bytes.getvalue()).decode()
-                }
-            }
-        }
-        request = ml.projects().predict(name=model_id, body=body)
-        response = request.execute()
-
-        # handle response
-        for prediction in response['predictions']:
-            if prediction['probabilities'][1] > threshold:
-            
-                logging.info('Ship detected at {} with {:.2f}% probability'.format(
-                    coords, prediction['probabilities'][1]))
-            
-                predictions[coords] = prediction
-                ship_count += 1
-
-            total_count += 1
-
-        sys.stdout.write('\rProcessed clip: {0} of {1}  '.format(total_count, total_bboxes))
-
-    logging.info('Total images processed: {}'.format(total_count))
-    logging.info('Total ships detected: {}'.format(ship_count))
-
-    return predictions
-
-
-def draw_bounding_boxes(image, predictions, threshold):
-    '''doc'''
-    annotated = image.copy()
-    draw = ImageDraw.Draw(annotated)
-
-    for coord, pred in predictions.items():
-        if pred['probabilities'][1] > threshold:
-            draw.rectangle(coord, outline='red', width=3)
-
-    return annotated
-
-
-def upload_image_blob(project, bucket_name, dir_prefix, blob_name, image, content_type, format='PNG'):
-    '''Uploads a blob to the specified location from a file object. This allows uploading of
-    BytesIO objects, Images, etc., without the need to first write to disk.
-
-    # TODO: consider handling client in main
-    '''
-    client = storage.Client(project=project)
-    bucket = client.get_bucket(bucket_name=bucket_name)
-    
-    blob = bucket.blob(blob_name)
-    image_bytes = BytesIO()
-    image.save(image_bytes, format=format)
-
-    blob.upload_from_string(image_bytes.getvalue(), content_type=content_type)
-    logging.info('Uploaded file {} to gs://{}/{}'.format(blob.name, bucket_name, dir_prefix))
-
-
-
-if __name__ == '__main__':
-    '''Steps:
-        1. Access blobs from input dir of GCS bucket
-        2. Save blob to image
-        3. Break image into clips
-        4. Make predictions on clips
-        5. Save predictions above a specified threshold
-        6. Draw bounding boxes on pos. predictions
-        7. Save annotated image to output dir
-    '''
-
-    # Pull queue from input dir
-    blob_queue = get_storage_blobs(project=PROJECT_NAME,
-                                   bucket_name=BUCKET_NAME,
-                                   dir_prefix=INPUT_DIR)
-
-    if not blob_queue:
-        logging.warn('No files were found at gs://{}/{}'.format(BUCKET_NAME, INPUT_DIR))
-    else:
-        logging.info('{} files found'.format(len(blob_queue)))
-
-    # Process files individually
-    for raw_blob in blob_queue:
+        # Checkpoint dirs setup
+        checkpoint_dir = create_tmp_dir(directory_name='tmp')
+        image_checkpoint_dir = create_tmp_dir(os.path.join('tmp/imgs'))
         
-        logging.info('Downloading {} as image...'.format(raw_blob.name))
-        image = download_image_blob(raw_blob)
 
-        # # FIXME: Artificially reduce image size for TESTING ONLY
-        # wd, ln = image.size
-        # image = image.crop((wd // 2, 0, wd // 1.9, ln // 2))
+        # -------------------- Entity Query -------------------- #
 
-        bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
+        # Find Entities with images waiting for annotation
+        datastore_client = datastore.Client(project=PROJECT_NAME)
+        key = datastore_client.key('PlanetScenes', '20180601_182755_0f33')
+        result = [datastore_client.get(key)]
 
-        predictions = perform_object_detection(project_name=PROJECT_NAME,
-                                               model_name=MODEL_NAME,
-                                               bbox_gen=bounding_boxes,
-                                               image=image,
-                                               threshold=0.2)
+
+        # -------------------- Main Loop ----------------------- #
         
-        annotated_image = draw_bounding_boxes(image, 
-                                              predictions, 
-                                              threshold=DRAW_THRESHOLD)
+        for entity in result:
 
-        annotated_blob_name = os.path.join(OUTPUT_DIR, os.path.basename(raw_blob.name).split(
-            '.')[0] + '_annotated_' + datetime.now().strftime('%Y%m%d_%H%M%S.png'))
+            # Download image locally
+            entity_id = entity.key.id_or_name
+            file_name = '{}_{}_{}.tiff'.format(ITEM_TYPE, entity_id, ASSET_TYPE) # TODO: use a function for this to enforce consistency
+            gs_path = os.path.join(INPUT_DIR, file_name)
+            local_path = os.path.join(image_checkpoint_dir, file_name)
 
-        upload_image_blob(project=PROJECT_NAME,
-                          bucket_name=BUCKET_NAME,
-                          dir_prefix=OUTPUT_DIR,
-                          blob_name=annotated_blob_name,
-                          image=annotated_image,
-                          content_type=raw_blob.content_type,
-                          format='PNG')
+            if not os.path.exists(local_path):
+                logging.info('Downloading image from Cloud Storage location: gs://{}/{}'.format(BUCKET_NAME, gs_path))
+                blob = get_storage_blob(project=PROJECT, bucket_name=BUCKET_NAME, blob_name=gs_path)
+                image = download_image_blob(blob)
+            else:
+                logging.info('Reading image from local checkpoint: {}'.format(local_path))
+                image = Image.open(local_path)
 
-        # TODO: Delete completed blobs from input dir, or maybe that's a bad idea... just archive them
+            # Auto-rotate image horizontally
+            if not os.path.exists(local_path):
+                image = auto_rotate(image)
+                
+                width, height = image.size
+                if height > width:
+                    image = image.transpose(Image.TRANSPOSE)
 
-        # # FIXME: TESTING ONLY
-        # break
-    
-    print('Dizz-un!')
+                image.save(local_path, format='PNG')
+            
+            # NOTE: DEV ONLY --> image.save(os.path.join(image_checkpoint_dir, 'sneak_peak.png'), format='PNG')
+
+            # NOTE: DEV ONLY -- artificially reduce image size
+            logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
+            image = image.crop((4000, 0, 4500, 2620))
+            image.show()
+
+            bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
+
+            predictions = perform_object_detection(project_name=PROJECT_NAME,
+                                                model_name=MODEL_NAME,
+                                                bbox_gen=bounding_boxes,
+                                                image=image,
+                                                threshold=SAVE_THRESHOLD)
+            
+            # Draw bounding boxes
+            annotated_image = draw_bounding_boxes(image=image,
+                                                  predictions=predictions,
+                                                  threshold=DRAW_THRESHOLD)
+
+            # # NOTE: DEV ONLY -- artificially reduce image size
+            logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
+            annotated_image.show()
+
+            today = datetime.today().strftime('%Y%m%d_%H%M%S')
+            annotated_name = file_name[:file_name.find('.')] + '_annotated_{}.png'.format(today)
+            
+            annotated_image.save(os.path.join(image_checkpoint_dir, annotated_name), format='PNG')
+
+            logging.info('File complete!')
+
+    except Exception as e:
+        logging.exception(e)
+        raise
+
+
+# -------------------------- Wrapping Up ----------------------------- #
+
+    # TODO: Clear tmp dir
+
+    run_end = datetime.now()
+    logging.info('')
+    logging.info('Pipeline completed:\t{}'.format(datetime.now()))
+    logging.info('Total runtime:\t{}'.format(run_end - run_start))
