@@ -312,7 +312,7 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
                     logging.info('Ship detected at {} with {:.2f}% probability'.format(
                         coord, prediction['probabilities'][1]))
                 
-                    predictions[coord] = prediction
+                    predictions[str(coord)] = prediction
                     ship_count += 1
 
                 total_count += 1
