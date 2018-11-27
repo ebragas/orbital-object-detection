@@ -102,7 +102,7 @@ if __name__ == "__main__":
             
             # NOTE: DEV ONLY --> image.save(os.path.join(image_checkpoint_dir, 'sneak_peak.png'), format='PNG')
 
-            # # NOTE: DEV ONLY -- artificially reduce image size
+            # # # NOTE: DEV ONLY -- artificially reduce image size
             # logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
             # image = image.crop((1400, 1300, 1900, 1800))
             # image.show()
@@ -117,8 +117,12 @@ if __name__ == "__main__":
             
             # Draw bounding boxes
             annotated_image = draw_bounding_boxes(image=image,
-                                                predictions=predictions,
-                                                threshold=DRAW_THRESHOLD)
+                                                  predictions=predictions,
+                                                  threshold=DRAW_THRESHOLD)
+
+            # # NOTE: DEV ONLY -- artificially reduce image size
+            # logging.warn('THIS OPERATION IS INTENDED FOR DEVELOPMENT ONLY!')
+            # annotated_image.show()
 
             today = datetime.today().strftime('%Y%m%d_%H%M%S')
             annotated_name = file_name[:file_name.find('.')] + '_annotated_{}.tiff'.format(today)

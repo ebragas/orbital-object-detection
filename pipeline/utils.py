@@ -686,7 +686,7 @@ def upload_image_blob(project, bucket_name, dir_prefix, blob_name, image, conten
     client = storage.Client(project=project)
     bucket = client.get_bucket(bucket_name=bucket_name)
     
-    blob = bucket.blob(blob_name)
+    blob = bucket.blob(os.path.join(dir_prefix, blob_name))
     image_bytes = BytesIO()
     image.save(image_bytes, format=format)
 
