@@ -92,36 +92,29 @@ if __name__ == "__main__":
                 image = Image.open(local_path)
 
             # Auto-rotate image horizontally
-            image = auto_rotate(image)
-            
-            width, height = image.size
-            if height > width:
-                image = image.transpose(Image.TRANSPOSE)
-            
-            # DEV ONLY --> image.save(os.path.join(image_checkpoint_dir, 'sneak_peak.png'), format='PNG')
+            if not os.path.exists(local_path):
+                image = auto_rotate(image)
+                
+                width, height = image.size
+                if height > width:
+                    image = image.transpose(Image.TRANSPOSE)
 
-            # # DEV ONLY -- artificially reduce image size
-            # image = image.crop((1000, 1000, 1200, 1200))
+                image.save(local_path, format='PNG')
+            
+            # NOTE: DEV ONLY --> image.save(os.path.join(image_checkpoint_dir, 'sneak_peak.png'), format='PNG')
+
+            # NOTE: DEV ONLY -- artificially reduce image size
+            image = image.crop((1400, 1300, 2400, 2300))
             # image.show()
 
-            # Perform object detection
-            predictions = maybe_load_from_checkpoint(checkpoint_dir, 'predictions_{}.json'.format(entity_id))
+            bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
 
-            if not predictions:
-                bounding_boxes = gen_bounding_box_coords(image, HEIGHT, WIDTH, STEP)
-
-                predictions = perform_object_detection(project_name=PROJECT_NAME,
-                                                    model_name=MODEL_NAME,
-                                                    bbox_gen=bounding_boxes,
-                                                    image=image,
-                                                    threshold=SAVE_THRESHOLD)
+            predictions = perform_object_detection(project_name=PROJECT_NAME,
+                                                model_name=MODEL_NAME,
+                                                bbox_gen=bounding_boxes,
+                                                image=image,
+                                                threshold=SAVE_THRESHOLD)
             
-                # TODO: cache predictions to tmp at chip level
-                write_to_checkpoint(checkpoint_dir, 'predictions_{}.json'.format(entity_id), predictions)
-
-            else:
-                logging.info('Loading predictions from checkpoint')
-
             # Draw bounding boxes
             annotated_image = draw_bounding_boxes(image=image,
                                                 predictions=predictions,

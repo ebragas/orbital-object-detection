@@ -228,21 +228,48 @@ def classify_image(packet):
     return coord, response
 
 
+def exhaust_generator_find_value(generator, find_value):
+    # Don't this this will work for my use case
+    while True:
+        val = next(generator)
+        if val == find_value:
+            break
+    
+    return generator
+
+
+def exhaust_generator_n_times(generator, n_times):
+    for i in range(n_times):
+        _ = next(generator)
+    return generator
+
+
 def perform_object_detection(project_name, model_name, bbox_gen, image, threshold=0.2):
     '''...
-    # TODO: implement multi-threading
     '''
 
     # TODO: Work around, cleanup later
     tmp_dir = create_tmp_dir()
 
     total_bboxes = next(bbox_gen)
-    predictions = {}
     ship_count = 0
-    counter = ship_count
     total_count = 0
     cpus = mp.cpu_count() - 1
     logging.info('Multiprocessing using {} CPUs'.format(cpus))
+    ckpt_file_name = 'prediction_cache.json'
+
+    # Continue from checkpoint if exists
+    predictions = maybe_load_from_checkpoint(tmp_dir, ckpt_file_name)
+    
+    if predictions:
+        logging.info('Continuing prediction from checkpoint')
+        total_count = predictions['total_count']
+        ship_count = predictions['ship_count']
+
+        bbox_gen = exhaust_generator_n_times(bbox_gen, total_count)
+
+    else:
+        predictions = {}
 
     for coord_batch in batch_generator(bbox_gen, size=cpus):
 
@@ -291,14 +318,17 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
                 total_count += 1
 
         # Dump current predictions to disk # TODO: figure out how to continue from checkpoints later
-        if counter < ship_count:
-            write_to_checkpoint(tmp_dir, 'prediction_cache.json', predictions)
-            counter = ship_count
+        predictions['total_count'] = total_count
+        predictions['ship_count'] = ship_count
+
+        write_to_checkpoint(tmp_dir, ckpt_file_name, predictions, update=True)
         
         logging.info('Processed {} images of {}'.format(total_count, total_bboxes))
 
     logging.info('Total images processed: {}'.format(total_count))
     logging.info('Total ships detected: {}'.format(ship_count))
+
+    os.rename(src=os.path.join(tmp_dir, ckpt_file_name), dst=os.path.join(tmp_dir, 'prediction_cache_complete{}.json'.format(datetime.now())))
 
     return predictions
 
@@ -708,13 +738,13 @@ def maybe_load_from_checkpoint(tmp_dir, file_name):
     return data
 
 
-def write_to_checkpoint(tmp_dir, file_name, data):
+def write_to_checkpoint(tmp_dir, file_name, data, update=False):
     '''Write checkpoint file, avoiding overwritting existing files and causing data loss
     '''
     file_path = os.path.join(tmp_dir, file_name)
 
     # Check if file exists already to prevent overwritting and potential data loss
-    if os.path.isfile(file_path):
+    if os.path.isfile(file_path) and not update:
         logging.error('File already exists! Raising error to avoid potential data loss!')
         raise ValueError('Checkpoint file already exists: {}'.format(file_path))
 
