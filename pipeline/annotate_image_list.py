@@ -77,7 +77,8 @@ if __name__ == "__main__":
             today = datetime.today().strftime('%Y%m%d_%H%M%S')
             annotated_name = file_name[:file_name.find('.')] + '_annotated_{}.png'.format(today)
             
-            annotated_image.save(os.path.join(image_checkpoint_dir, annotated_name), format='PNG')
+            # annotated_image.save(os.path.join(image_checkpoint_dir, annotated_name), format='PNG')
+            upload_image_blob(PROJECT_NAME, BUCKET_NAME, OUTPUT_DIR, annotated_name, annotated_image, 'image/png')
 
             logging.info('File complete!')
 
