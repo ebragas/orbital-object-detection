@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
+from googleapiclient.errors import HttpError
 from google.cloud import datastore
 from google.cloud import storage
 from google.cloud.datastore.helpers import GeoPoint
@@ -232,9 +233,13 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
     # TODO: implement multi-threading
     '''
 
+    # TODO: Work around, cleanup later
+    tmp_dir = create_tmp_dir()
+
     total_bboxes = next(bbox_gen)
     predictions = {}
     ship_count = 0
+    counter = ship_count
     total_count = 0
     cpus = mp.cpu_count() - 1
     logging.info('Multiprocessing using {} CPUs'.format(cpus))
@@ -256,8 +261,19 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
         # multiprocess requests
         logging.debug('Starting multiprocessing... {}'.format(datetime.now()))
 
-        with mp.get_context("spawn").Pool(initializer=_mute) as pool:
-            response_queue = pool.map(classify_image, request_queue)
+        try:
+            with mp.get_context("spawn").Pool(initializer=_mute) as pool:
+                response_queue = pool.map(classify_image, request_queue)
+
+        except HttpError as e: # Ignore server errors and continue processing
+            logging.exception(e)
+            if e.resp.status in [500, 503, 403]:
+                logging.warn('Ignoring exception and continueing processing')
+                sleep(5)
+                continue
+            else:
+                raise
+
 
         logging.debug('Multiprocessing done. {}'.format(datetime.now()))
 
@@ -274,6 +290,11 @@ def perform_object_detection(project_name, model_name, bbox_gen, image, threshol
 
                 total_count += 1
 
+        # Dump current predictions to disk # TODO: figure out how to continue from checkpoints later
+        if counter < ship_count:
+            write_to_checkpoint(tmp_dir, 'prediction_cache.json', predictions)
+            counter = ship_count
+        
         logging.info('Processed {} images of {}'.format(total_count, total_bboxes))
 
     logging.info('Total images processed: {}'.format(total_count))
