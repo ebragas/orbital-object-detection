@@ -86,7 +86,6 @@ if __name__ == "__main__":
                 logging.info('Downloading image from Cloud Storage location: gs://{}/{}'.format(BUCKET_NAME, gs_path))
                 blob = get_storage_blob(project=PROJECT, bucket_name=BUCKET_NAME, blob_name=gs_path)
                 image = download_image_blob(blob)
-                image.save(local_path, format='PNG')
             else:
                 logging.info('Reading image from local checkpoint: {}'.format(local_path))
                 image = Image.open(local_path)
