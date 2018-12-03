@@ -1,28 +1,40 @@
 #!/flex-env/bin/env python
 from pprint import pprint
 import logging
+from google.cloud import datastore
+from google.cloud import storage
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 
 
 PROJECT = 'reliable-realm-222318'
 BUCKET = 'reliable-realm-222318-vcm'
+ENTITY_KIND = 'PlanetScenes'
 
 app = Flask(__name__)
 
-
-def get_storage_blobs(project, bucket_name, dir_prefix):
-    '''Return list of blob objects from the specified location
-    '''
-    client = storage.Client(project=project)
-    bucket = client.get_bucket(bucket_name=bucket_name)
-    blobs = list(bucket.list_blobs(prefix=dir_prefix))
-    return blobs
+ds_client = datastore.Client(project=PROJECT)
+store_client = storage.Client(project=PROJECT)
 
 @app.route('/')
 def index():
     """Return home page"""
     return render_template('index.html')
+
+@app.route('/status')
+def status_page():
+    """Return status page with system stats"""
+    
+    query = ds_client.query(kind='PlanetScenes')
+    query.add_filter('visual_downloaded', '=', True)
+    entities = list(query.fetch(limit=None))
+
+    stats = {
+        'total_downloaded': len(entities),
+        'total_annotated': sum([1 for entity in entities if entity.get('visual_annotated', False) == True])
+    }
+    return render_template('explorer.html', stats=stats)
+
 
 
 @app.errorhandler(500)
