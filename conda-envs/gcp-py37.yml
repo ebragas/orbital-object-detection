@@ -1,0 +1,42 @@
+name: gcp-py37
+channels:
+  - defaults
+dependencies:
+  - ca-certificates=2018.03.07=0
+  - certifi=2018.10.15=py37_0
+  - libcxx=4.0.1=hcfea43d_1
+  - libcxxabi=4.0.1=hcfea43d_1
+  - libedit=3.1.20170329=hb402a30_2
+  - libffi=3.2.1=h475c297_4
+  - ncurses=6.1=h0a44026_1
+  - openssl=1.1.1a=h1de35cc_0
+  - pip=18.1=py37_0
+  - python=3.7.1=haf84260_3
+  - readline=7.0=h1de35cc_5
+  - setuptools=40.6.2=py37_0
+  - sqlite=3.25.3=ha441bb4_0
+  - tk=8.6.8=ha441bb4_0
+  - wheel=0.32.3=py37_0
+  - xz=5.2.4=h1de35cc_4
+  - zlib=1.2.11=h1de35cc_3
+  - pip:
+    - cachetools==3.0.0
+    - chardet==3.0.4
+    - google-api-core==1.6.0
+    - google-auth==1.6.1
+    - google-cloud-core==0.28.1
+    - google-cloud-datastore==1.7.1
+    - googleapis-common-protos==1.5.5
+    - grpcio==1.16.1
+    - idna==2.7
+    - protobuf==3.6.1
+    - pyasn1==0.4.4
+    - pyasn1-modules==0.2.2
+    - pyspark==2.3.2
+    - pytz==2018.7
+    - requests==2.20.1
+    - rsa==4.0
+    - six==1.11.0
+    - urllib3==1.24.1
+prefix: /Users/ericbragas/anaconda3/envs/gcp-py37
+
