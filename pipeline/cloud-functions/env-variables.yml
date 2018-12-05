@@ -1,0 +1,4 @@
+PROJECT_NAME: reliable-realm-222318
+ENTITY_KIND: PlanetScenes
+DATA_BUCKET: reliable-realm-222318-vcm
+IMAGE_DIR: pipeline/full
