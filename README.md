@@ -1,8 +1,33 @@
 # Satellite Object Detection Case Study
-_Insert helpful info here!_
+A full-stack Data Science Engineering product that pulls satellite imagery of the San Francisco Bay from Planet's API, performs Cargo Ship object detection and presents the results in a queryable database of via web application.
+
+Each architectural component is designed as a serverless micro-service that either interacts directly with the central data stores or is accessible via web service to minimize downtime due to failure, and enable deployments without service interruption (including TensorFlow models).
+
+_architecture diagram.png_
+
+## Technologies
+**Machine Learning Models** (Convolutional Neural Networks):
+* TensorFlow (Estimators, Layers, tf.data, etc.)
+* TensorFlow Hub
+* Keras
+
+**Google Cloud Platform Backend**:
+* Functions
+* Dataflow (Apache Beam)
+* DataStore (NoSQL)
+* Storage
+* Machine Learning (ML) Engine
+
+**Frontend**:
+* App Engine Flexible
+  * Flask
+  * Jinja2
+  * JavaScript
+  * HMTL5 + CSS
 
 
-### Project Structure
+
+## Project Structure
 * `automl` - bash scripts using `gcloud` for interaction with AutoML service
 * `conda-envs` - conda environment exports useful for reproducing the development environment. These were essential to managing all the various dependencies for Google Cloud tools and separate Python runtimes
 * `functions` (Python 3.7) - Cloud Functions for performing recurrent data ingest from Planet API. Writes metadata to Cloud DataStore and images to Cloud Storage.
